@@ -1,0 +1,23 @@
+# Dependencies
+**/node_modules/
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+secrets/
+*.key
+*.pem
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build and test output
+frontend/dist/
+coverage/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
