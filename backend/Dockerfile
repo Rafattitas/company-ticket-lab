@@ -16,7 +16,7 @@ FROM base AS runtime
 ENV NODE_ENV=production
 
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
-COPY --chown=node:node package.json package-lock.json server.js ./
+COPY --chown=node:node package.json package-lock.json server.js db.js ./
 
 USER node
 
