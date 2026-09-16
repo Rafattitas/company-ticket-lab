@@ -1,7 +1,7 @@
 const express = require("express");
-const pool = require("../db");
 
-const router = express.Router();
+function createTicketsRouter(pool) {
+  const router = express.Router();
 
 const allowedStatuses = new Set([
   "open",
@@ -153,4 +153,7 @@ router.patch("/:id/status", async (request, response, next) => {
   }
 });
 
-module.exports = router;
+  return router;
+}
+
+module.exports = createTicketsRouter;

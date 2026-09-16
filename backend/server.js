@@ -51,7 +51,7 @@ app.get("/api", (request, response) => {
     message: "Company Ticket API is running",
   });
 });
-app.use("/api/tickets", ticketsRouter);
+app.use("/api/tickets", ticketsRouter(pool));
 
 app.use((error, request, response, next) => {
   console.error("Unhandled request error:", error.message);
