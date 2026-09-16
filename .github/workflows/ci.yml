@@ -43,3 +43,7 @@ jobs:
         run: |
           docker build --pull -t company-ticket-backend:ci ./backend
           docker build --pull -t company-ticket-frontend:ci ./frontend
+          docker build --pull -t company-ticket-postgres:ci ./deploy/postgres
+
+      - name: Scan Docker images
+        run: bash deploy/scan-images.sh company-ticket-backend:ci company-ticket-frontend:ci company-ticket-postgres:ci
