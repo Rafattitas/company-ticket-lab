@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test backend
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --env npm_config_cache=/tmp/npm-cache \
+            --mount type=bind,src="$PWD/backend",dst=/app \
+            --workdir /app \
+            node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 \
+            sh -c 'npm ci && npm test'
+
+      - name: Check frontend
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --env npm_config_cache=/tmp/npm-cache \
+            --mount type=bind,src="$PWD/frontend",dst=/app \
+            --workdir /app \
+            node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 \
+            sh -c 'npm ci && npm run lint && npm run build'
+
+      - name: Build Docker images
+        run: |
+          docker build --pull -t company-ticket-backend:ci ./backend
+          docker build --pull -t company-ticket-frontend:ci ./frontend
