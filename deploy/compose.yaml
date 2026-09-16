@@ -1,0 +1,80 @@
+name: company-ticket-lab
+
+services:
+  postgres:
+    image: postgres:17-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets:
+      - postgres_admin_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    shm_size: 128m
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 200
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready --username=postgres --dbname=postgres
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 30s
+
+  backend:
+    image: company-ticket-backend:0.3.0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ticket_db
+      DB_USER: ticket_app
+      DB_PASSWORD_FILE: /run/secrets/postgres_app_password
+    secrets:
+      - postgres_app_password
+    networks:
+      - internal
+    expose:
+      - "3000"
+    group_add:
+      - "987"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 100
+    stop_grace_period: 10s
+
+secrets:
+  postgres_admin_password:
+    file: /etc/company-ticket/secrets/postgres_password
+
+  postgres_app_password:
+    file: /etc/company-ticket/secrets/postgres_app_password
+
+volumes:
+  postgres_data:
+    external: true
+    name: company-ticket-postgres-data
+
+networks:
+  internal:
+    external: true
+    name: company-ticket-internal
