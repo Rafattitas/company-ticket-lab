@@ -17,7 +17,7 @@ ENV NODE_ENV=production
 
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json package-lock.json server.js db.js ./
-
+COPY --chown=node:node routes ./routes
 USER node
 
 EXPOSE 3000

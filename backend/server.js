@@ -1,6 +1,6 @@
 const express = require("express");
 const pool = require("./db");
-
+const ticketsRouter = require("./routes/tickets");
 const app = express();
 const port = Number(process.env.PORT || 3000);
 
@@ -51,7 +51,15 @@ app.get("/api", (request, response) => {
     message: "Company Ticket API is running",
   });
 });
+app.use("/api/tickets", ticketsRouter);
 
+app.use((error, request, response, next) => {
+  console.error("Unhandled request error:", error.message);
+
+  response.status(500).json({
+    error: "internal_server_error",
+  });
+});
 const server = app.listen(port, "0.0.0.0", () => {
   console.log(`Backend listening on port ${port}`);
 });
