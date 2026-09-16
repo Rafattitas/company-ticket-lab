@@ -30,7 +30,7 @@ services:
     stop_grace_period: 30s
 
   backend:
-    image: company-ticket-backend:0.4.0
+    image: company-ticket-backend:0.5.0
     restart: unless-stopped
     depends_on:
       postgres:
