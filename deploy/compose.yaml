@@ -61,7 +61,27 @@ services:
     cpus: 0.5
     pids_limit: 100
     stop_grace_period: 10s
-
+  frontend:
+    image: company-ticket-frontend:0.3.0
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - internal
+      - edge
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 100
 secrets:
   postgres_admin_password:
     file: /etc/company-ticket/secrets/postgres_password
@@ -78,3 +98,5 @@ networks:
   internal:
     external: true
     name: company-ticket-internal
+  edge:
+    driver: bridge
