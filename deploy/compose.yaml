@@ -2,7 +2,7 @@ name: company-ticket-lab
 
 services:
   postgres:
-    image: company-ticket-postgres:17.11-r1
+    image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE}
     restart: unless-stopped
     environment:
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
@@ -30,7 +30,7 @@ services:
     stop_grace_period: 30s
 
   backend:
-    image: company-ticket-backend:0.5.0
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -62,7 +62,7 @@ services:
     pids_limit: 100
     stop_grace_period: 10s
   frontend:
-    image: company-ticket-frontend:0.3.0
+    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE}
     restart: unless-stopped
     depends_on:
       backend:
