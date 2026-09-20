@@ -1,6 +1,8 @@
 name: company-ticket-lab
 
 services:
+  # Database data lives in an external volume so container replacement does not
+  # replace the active database files.
   postgres:
     image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE}
     restart: unless-stopped
@@ -29,6 +31,8 @@ services:
       start_period: 10s
     stop_grace_period: 30s
 
+  # The backend is reachable only through Docker networks; no host port is
+  # published for the API.
   backend:
     image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE}
     restart: unless-stopped
@@ -61,6 +65,8 @@ services:
     cpus: 0.5
     pids_limit: 100
     stop_grace_period: 10s
+  # Nginx is the only published application service. Binding to host loopback
+  # requires administrators to use an SSH tunnel from their workstation.
   frontend:
     image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE}
     restart: unless-stopped
@@ -96,11 +102,13 @@ secrets:
     file: /etc/company-ticket/secrets/postgres_app_password
 
 volumes:
+  # Provisioned once on the host and intentionally kept outside Compose cleanup.
   postgres_data:
     external: true
     name: company-ticket-postgres-data
 
 networks:
+  # Shared private network provisioned on the host for controlled service access.
   internal:
     external: true
     name: company-ticket-internal

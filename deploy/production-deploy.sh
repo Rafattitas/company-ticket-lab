@@ -21,6 +21,8 @@ backup_dir="/var/backups/company-ticket"
 backup_retention_count=10
 lock_file="/run/lock/company-ticket-deploy.lock"
 
+# Serialize deployments so two workflow runs cannot modify Compose state or the
+# active image reference file at the same time.
 exec 9>"$lock_file"
 if ! flock -n 9; then
   echo "Another deployment is already running." >&2
@@ -41,6 +43,7 @@ done
 echo "Fetching source code..."
 git -C "$repo_dir" fetch --quiet --prune origin main
 
+# Accept only reviewed commits reachable from the remote main branch.
 if ! git -C "$repo_dir" cat-file -e "${release_sha}^{commit}"; then
   echo "Commit does not exist: $release_sha" >&2
   exit 1
@@ -58,6 +61,8 @@ git -C "$repo_dir" checkout --quiet --detach "$release_sha"
 candidate_env="$(mktemp /etc/company-ticket/images.env.candidate.XXXXXX)"
 previous_env="$(mktemp /etc/company-ticket/images.env.previous.XXXXXX)"
 
+# Keep the active references unchanged while Compose validates and pulls the
+# candidate release.
 cp "$image_env" "$previous_env"
 
 cat > "$candidate_env" <<ENV
@@ -87,6 +92,7 @@ backup_stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 
 echo "Creating PostgreSQL backup..."
 
+# Create both application data and cluster-role backups before changing images.
 "${current_compose[@]}" exec -T postgres \
   pg_dump --username=postgres --dbname=ticket_db --format=custom \
   > "$backup_dir/${backup_stamp}_ticket_db.dump"
@@ -112,6 +118,8 @@ rollback_needed=0
 rollback() {
   exit_code=$?
 
+  # Image rollback restores the prior release. It cannot reverse a database
+  # migration, which is why the validated pre-deployment backup is retained.
   if [ "$rollback_needed" -eq 1 ]; then
     echo "Deployment failed; restoring previous image references." >&2
 
@@ -151,6 +159,8 @@ rm -f "$candidate_env" "$previous_env"
 
 echo "Applying backup retention policy..."
 
+# Backup filenames begin with sortable UTC timestamps. Keeping the first ten
+# database dumps also keeps the matching role dump for each retained set.
 mapfile -t backup_dumps < <(
   find "$backup_dir" \
     -maxdepth 1 \
