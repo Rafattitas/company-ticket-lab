@@ -59,11 +59,36 @@ self-hosted, Linux, X64, production, company-ticket
 | `/srv/company-ticket/repository` | `root:root` | Protected deployment checkout |
 | `/usr/local/sbin/company-ticket-deploy` | `root:root`, mode `0755` | Installed deployment command |
 | `/etc/company-ticket/images.env` | `root:root`, mode `0644` | Current GHCR image references; contains no secrets |
+| `/etc/company-ticket/host.env` | `root:root`, mode `0644` | VM-specific LAN bind address; contains no secrets |
 | `/etc/company-ticket/secrets/` | `root:root`, mode `0700` | PostgreSQL secret files |
 | `/var/backups/company-ticket/` | `root:root`, mode `0700` | Logical database backups |
 | `/var/lib/docker/` | Docker-managed | Images, containers, networks, and volumes |
 
 The tracked `deploy/production-deploy.sh` file is the reviewed source for the installed command. Updating the tracked file does not automatically replace the root-owned copy; installation is a separate administrative action.
+
+## Host network configuration
+
+Before deploying this Compose version, verify the VM's current LAN address:
+
+```bash
+ip -4 address show scope global
+```
+
+Reserve that address in DHCP or configure a static address, then create the
+root-owned host settings file. Replace the example address when the VM reports
+a different value:
+
+```bash
+printf '%s\n' 'FRONTEND_BIND_ADDRESS=192.168.1.162' \
+  | sudo tee /etc/company-ticket/host.env > /dev/null
+
+sudo chown root:root /etc/company-ticket/host.env
+sudo chmod 0644 /etc/company-ticket/host.env
+```
+
+The deployment command rejects an invalid address and an address that is not
+assigned to the VM. Devices on the trusted LAN then use
+`http://192.168.1.162:8080`, substituting the configured address.
 
 ## Deployment transaction
 
@@ -91,10 +116,12 @@ Run these commands on the VM after a deployment:
 ```bash
 sudo docker compose \
   --env-file /etc/company-ticket/images.env \
+  --env-file /etc/company-ticket/host.env \
   --file /srv/company-ticket/repository/deploy/compose.yaml \
   ps
 
-curl -fsS http://127.0.0.1:8080/api/tickets
+source /etc/company-ticket/host.env
+curl -fsS "http://${FRONTEND_BIND_ADDRESS}:8080/api/tickets"
 
 sudo ls -lht /var/backups/company-ticket | head
 ```

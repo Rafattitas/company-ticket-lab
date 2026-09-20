@@ -15,6 +15,10 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - internal
+    # The database is reachable from the VM itself only. Administrators connect
+    # to this port through an authenticated SSH tunnel.
+    ports:
+      - "127.0.0.1:15432:5432"
     shm_size: 128m
     mem_limit: 1g
     cpus: 1.0
@@ -65,8 +69,8 @@ services:
     cpus: 0.5
     pids_limit: 100
     stop_grace_period: 10s
-  # Nginx is the only published application service. Binding to host loopback
-  # requires administrators to use an SSH tunnel from their workstation.
+  # Nginx is the only service published to users. The production host supplies
+  # its LAN address through /etc/company-ticket/host.env.
   frontend:
     image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE}
     restart: unless-stopped
@@ -77,7 +81,7 @@ services:
       - internal
       - edge
     ports:
-      - "127.0.0.1:8080:8080"
+      - "${FRONTEND_BIND_ADDRESS:-127.0.0.1}:8080:8080"
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m

@@ -21,6 +21,16 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate deployment configuration
+        env:
+          BACKEND_IMAGE: company-ticket-backend:ci
+          FRONTEND_IMAGE: company-ticket-frontend:ci
+          POSTGRES_IMAGE: company-ticket-postgres:ci
+          FRONTEND_BIND_ADDRESS: 127.0.0.1
+        run: |
+          bash -n deploy/*.sh
+          docker compose --file deploy/compose.yaml config --quiet
+
       - name: Test backend
         run: |
           docker run --rm \
