@@ -45,5 +45,8 @@ jobs:
           docker build --pull -t company-ticket-frontend:ci ./frontend
           docker build --pull -t company-ticket-postgres:ci ./deploy/postgres
 
+      - name: Integration test
+        run: sudo bash deploy/integration-test.sh company-ticket-backend:ci company-ticket-postgres:ci
+
       - name: Scan Docker images
         run: bash deploy/scan-images.sh company-ticket-backend:ci company-ticket-frontend:ci company-ticket-postgres:ci
