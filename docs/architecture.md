@@ -60,6 +60,7 @@ The browser never connects directly to the backend or PostgreSQL.
 |---|---|---|
 | VM loopback | PostgreSQL host port `15432` | Allows database inspection through an SSH tunnel only |
 | `edge` | Frontend | Provides the published frontend endpoint |
+| `database_management` | PostgreSQL only | Gives Docker a gateway for the loopback-only administration port |
 | `company-ticket-internal` | Frontend, backend, PostgreSQL | Private service-to-service communication |
 | VM LAN interface | SSH and frontend port `8080` | Administration and ticket UI access from the trusted LAN |
 

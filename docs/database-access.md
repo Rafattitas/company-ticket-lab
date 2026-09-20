@@ -4,6 +4,11 @@ Administrators can inspect `ticket_db` with DBeaver without publishing
 PostgreSQL to the LAN. Docker binds PostgreSQL to `127.0.0.1:15432` on the VM,
 and the workstation reaches that loopback port through SSH.
 
+The PostgreSQL container remains on the internal application network and also
+joins a dedicated `database_management` bridge. Docker requires a non-internal
+gateway network to activate a published port. No other application service
+joins this management bridge, and the published address remains host loopback.
+
 ```text
 DBeaver localhost:15432
     → encrypted SSH connection to the VM

@@ -15,6 +15,10 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - internal
+      # Docker does not activate published ports for a container attached only
+      # to an internal network. This dedicated bridge provides the gateway used
+      # for the loopback-only administration port; no other service joins it.
+      - database_management
     # The database is reachable from the VM itself only. Administrators connect
     # to this port through an authenticated SSH tunnel.
     ports:
@@ -117,4 +121,6 @@ networks:
     external: true
     name: company-ticket-internal
   edge:
+    driver: bridge
+  database_management:
     driver: bridge
