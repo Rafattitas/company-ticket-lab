@@ -105,3 +105,22 @@ jobs:
       - name: Log out of GHCR
         if: always()
         run: docker logout ghcr.io
+
+  deploy:
+    name: Deploy production
+    needs: publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - production
+      - company-ticket
+    environment:
+      name: production
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Deploy release
+        run: sudo -n /usr/local/sbin/company-ticket-deploy "${GITHUB_SHA}"
