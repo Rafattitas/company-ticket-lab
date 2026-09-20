@@ -9,6 +9,8 @@ permissions:
   contents: read
 
 jobs:
+  # Pull requests stop after this job. Main pushes also export these exact tested
+  # images so the publish job never rebuilds unverified content.
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -69,6 +71,7 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # Publish only after verification succeeds on a push to main.
   publish:
     needs: verify
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -106,6 +109,8 @@ jobs:
         if: always()
         run: docker logout ghcr.io
 
+  # Production runs on the private VM runner after the environment approval.
+  # The runner can invoke only the root-owned deployment command below.
   deploy:
     name: Deploy production
     needs: publish
