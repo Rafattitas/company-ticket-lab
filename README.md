@@ -24,7 +24,9 @@ flowchart LR
 
 - Nginx serves the compiled React application and proxies `/api/` requests to the backend.
 - The backend and PostgreSQL communicate on an internal Docker network.
-- PostgreSQL is published only on VM loopback and is reached through an SSH tunnel.
+- PostgreSQL also joins a dedicated management bridge so Docker can publish its
+  administration port on VM loopback only; administrators reach it through an
+  SSH tunnel.
 - The frontend is published on the VM's configured LAN address on port `8080`.
 - Devices on the same trusted LAN can open the application in a browser.
 
