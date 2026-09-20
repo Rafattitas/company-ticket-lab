@@ -17,6 +17,7 @@ fi
 repo_dir="/srv/company-ticket/repository"
 compose_file="$repo_dir/deploy/compose.yaml"
 image_env="/etc/company-ticket/images.env"
+host_env="/etc/company-ticket/host.env"
 backup_dir="/var/backups/company-ticket"
 backup_retention_count=10
 lock_file="/run/lock/company-ticket-deploy.lock"
@@ -32,6 +33,7 @@ fi
 for required_file in \
   /etc/company-ticket/secrets/postgres_password \
   /etc/company-ticket/secrets/postgres_app_password \
+  "$host_env" \
   "$image_env"
 do
   if [ ! -f "$required_file" ]; then
@@ -39,6 +41,24 @@ do
     exit 1
   fi
 done
+
+# This root-owned file contains deployment settings rather than secrets. The
+# address must belong to the VM so Docker cannot accidentally publish the UI on
+# an unexpected interface.
+set -a
+# shellcheck disable=SC1090
+source "$host_env"
+set +a
+
+if [[ ! "${FRONTEND_BIND_ADDRESS:-}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+  echo "FRONTEND_BIND_ADDRESS must be an IPv4 address." >&2
+  exit 1
+fi
+
+if ! ip -4 address show | grep -Fq " $FRONTEND_BIND_ADDRESS/"; then
+  echo "FRONTEND_BIND_ADDRESS is not assigned to this host." >&2
+  exit 1
+fi
 
 echo "Fetching source code..."
 git -C "$repo_dir" fetch --quiet --prune origin main
@@ -76,12 +96,14 @@ chmod 0644 "$candidate_env"
 current_compose=(
   docker compose
   --env-file "$image_env"
+  --env-file "$host_env"
   --file "$compose_file"
 )
 
 candidate_compose=(
   docker compose
   --env-file "$candidate_env"
+  --env-file "$host_env"
   --file "$compose_file"
 )
 
@@ -128,6 +150,7 @@ rollback() {
 
     docker compose \
       --env-file "$image_env" \
+      --env-file "$host_env" \
       --file "$compose_file" \
       up --detach --wait --wait-timeout 120 || true
   fi
@@ -145,11 +168,12 @@ rollback_needed=1
 
 docker compose \
   --env-file "$image_env" \
+  --env-file "$host_env" \
   --file "$compose_file" \
   up --detach --wait --wait-timeout 120
 
 curl --fail --silent --show-error \
-  http://127.0.0.1:8080/api/tickets \
+  "http://${FRONTEND_BIND_ADDRESS}:8080/api/tickets" \
   > /dev/null
 
 rollback_needed=0
@@ -191,5 +215,6 @@ echo "Deployment succeeded: $release_sha"
 
 docker compose \
   --env-file "$image_env" \
+  --env-file "$host_env" \
   --file "$compose_file" \
   ps

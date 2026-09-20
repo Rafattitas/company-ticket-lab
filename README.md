@@ -10,7 +10,8 @@ A production-style Docker and DevOps training project for a small support-ticket
 
 ```mermaid
 flowchart LR
-    U[Browser] -->|SSH tunnel<br/>127.0.0.1:8080| N[Nginx + React]
+    U[LAN browser] -->|VM LAN address:8080| N[Nginx + React]
+    A[Database administrator] -->|SSH tunnel<br/>localhost:15432| P
     N -->|/api/*| B[Express backend]
     B -->|PostgreSQL protocol| P[(PostgreSQL)]
     P --> V[(External Docker volume)]
@@ -23,9 +24,9 @@ flowchart LR
 
 - Nginx serves the compiled React application and proxies `/api/` requests to the backend.
 - The backend and PostgreSQL communicate on an internal Docker network.
-- PostgreSQL is not published to the host.
-- The frontend is published only on the VM loopback address, `127.0.0.1:8080`.
-- Users reach the application through an SSH local port-forward.
+- PostgreSQL is published only on VM loopback and is reached through an SSH tunnel.
+- The frontend is published on the VM's configured LAN address on port `8080`.
+- Devices on the same trusted LAN can open the application in a browser.
 
 See [Architecture](docs/architecture.md) for the request flow, network boundaries, and persistent state.
 
@@ -51,6 +52,8 @@ company-ticket-lab/
 │   ├── postgres/
 │   │   └── Dockerfile
 │   ├── compose.yaml
+│   ├── configure-readonly-user.sh
+│   ├── host.env.example
 │   ├── images.env.example
 │   ├── integration-test.sh
 │   ├── production-deploy.sh
@@ -58,6 +61,7 @@ company-ticket-lab/
 │   └── scan-images.sh
 ├── docs/
 │   ├── architecture.md
+│   ├── database-access.md
 │   ├── deployment.md
 │   ├── operations-runbook.md
 │   └── security-scanning.md
@@ -130,6 +134,7 @@ See [Deployment](docs/deployment.md) for the complete release flow and host layo
 - Backend and frontend containers use read-only filesystems and drop all Linux capabilities.
 - Privilege escalation is disabled with `no-new-privileges`.
 - PostgreSQL and the backend are not published to the LAN.
+- Database inspection uses a dedicated read-only role through an SSH tunnel.
 - Secrets are stored under `/etc/company-ticket/secrets/`, outside Git.
 - The deployment runner can invoke one root-owned deployment command only.
 - Trivy reports HIGH and CRITICAL findings and blocks the configured fixable findings.
@@ -142,6 +147,8 @@ See [Security scanning](docs/security-scanning.md) for the current Trivy gate an
 
 Common checks, logs, runner diagnostics, disk checks, and deployment troubleshooting are documented in the [Operations runbook](docs/operations-runbook.md).
 
+Read-only database inspection from a workstation is documented in [Database access](docs/database-access.md).
+
 ## Development workflow
 
 Changes are made on short-lived branches and merged through pull requests after the verification job succeeds. See [Contributing](CONTRIBUTING.md) for branch names, checks, commit guidance, and the rule against committing secrets.
@@ -150,5 +157,6 @@ Changes are made on short-lived branches and merged through pull requests after 
 
 - Backups are stored locally on the VM; loss of the VM or its disk can remove both live data and backups.
 - The lab uses one VM and one self-hosted deployment runner.
+- The ticket UI has no user authentication; every device that can reach the LAN endpoint can view and change tickets.
 - Image tags include the Git commit SHA for traceability but remain registry tags; digest-based deployment would provide stronger immutability.
 - The documented PostgreSQL `gosu` finding still requires a separate reachability review.

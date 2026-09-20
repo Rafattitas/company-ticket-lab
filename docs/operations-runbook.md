@@ -7,6 +7,7 @@ Run operational commands on the Ubuntu VM unless a section says otherwise.
 ```bash
 sudo docker compose \
   --env-file /etc/company-ticket/images.env \
+  --env-file /etc/company-ticket/host.env \
   --file /srv/company-ticket/repository/deploy/compose.yaml \
   ps
 ```
@@ -16,8 +17,9 @@ All three services should report `healthy`.
 ## Application checks
 
 ```bash
-curl -fsS http://127.0.0.1:8080/
-curl -fsS http://127.0.0.1:8080/api/tickets
+source /etc/company-ticket/host.env
+curl -fsS "http://${FRONTEND_BIND_ADDRESS}:8080/"
+curl -fsS "http://${FRONTEND_BIND_ADDRESS}:8080/api/tickets"
 ```
 
 The first command verifies Nginx and the compiled frontend. The second verifies the reverse proxy, backend, database connection, and ticket query.
@@ -27,16 +29,19 @@ The first command verifies Nginx and the compiled frontend. The second verifies 
 ```bash
 sudo docker compose \
   --env-file /etc/company-ticket/images.env \
+  --env-file /etc/company-ticket/host.env \
   --file /srv/company-ticket/repository/deploy/compose.yaml \
   logs --tail 100 backend
 
 sudo docker compose \
   --env-file /etc/company-ticket/images.env \
+  --env-file /etc/company-ticket/host.env \
   --file /srv/company-ticket/repository/deploy/compose.yaml \
   logs --tail 100 frontend
 
 sudo docker compose \
   --env-file /etc/company-ticket/images.env \
+  --env-file /etc/company-ticket/host.env \
   --file /srv/company-ticket/repository/deploy/compose.yaml \
   logs --tail 100 postgres
 ```
@@ -108,32 +113,38 @@ Do not run broad prune commands without reviewing which images, containers, and 
 sudo docker network inspect company-ticket-internal
 sudo ss -lntup
 sudo ufw status verbose
+sudo cat /etc/company-ticket/host.env
 ```
 
 Expected host exposure:
 
-- SSH on port `22`, restricted by UFW to the management address.
-- Frontend on `127.0.0.1:8080` only.
-- No host-published backend or PostgreSQL port.
+- SSH on port `22` for administration and database tunnelling.
+- Frontend on the configured VM LAN address at port `8080`.
+- PostgreSQL on `127.0.0.1:15432` only.
+- No host-published backend port.
+
+From another device on the same LAN, open:
+
+```text
+http://<FRONTEND_BIND_ADDRESS>:8080
+```
+
+If the VM address is assigned by DHCP, reserve it on the router before relying
+on this URL. The application currently has no login, so access to port `8080`
+must be limited to the trusted LAN.
 
 ## Failed deployment
 
 1. Open the failed `Deploy production` job and read the first failing command.
 2. Check the VM service and container logs.
 3. Read `/etc/company-ticket/images.env` to see whether rollback restored the previous release.
-4. Confirm the API through `127.0.0.1:8080`.
+4. Confirm the API through the configured LAN address.
 5. Keep the pre-deployment backup until the incident is resolved.
 
 The deployment script attempts an image rollback when failure occurs after activating the new image references. Database changes made by a migration require a compatible database restore or forward fix; image rollback alone cannot reverse schema or data changes.
 
-## SSH tunnel access
+## Workstation access
 
-The application is intentionally bound to VM loopback. From a management workstation, forward a local port through SSH:
-
-```text
-local 127.0.0.1:8080
-    → SSH lab-prod:22
-    → remote 127.0.0.1:8080
-```
-
-Then open `http://127.0.0.1:8080` in the browser on that workstation.
+Devices on the trusted LAN open `http://<VM-LAN-IP>:8080`. PostgreSQL remains
+on VM loopback and requires the SSH tunnel described in
+[Database access](database-access.md).
