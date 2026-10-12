@@ -352,7 +352,7 @@ echo "Integration test passed; cleanup runs on exit."
 docker exec -i "$backend_name" node <<'JS'
 const pool = require("./db");
 (async () => {
-  const past = new Date(Date.now() - 3600000);
+  const past = new Date(Date.now() - 3600000).toISOString();
   await pool.query("UPDATE tickets SET response_due_at = $1, resolution_due_at = $1 WHERE title = $2", [past, "Second CI ticket"]);
   await pool.query(`INSERT INTO tickets(title, requester_name, requester_email, requester_phone)
     SELECT 'Report volume ticket ' || n, 'Test employee', 'volume@example.com', '123456789'
