@@ -173,7 +173,7 @@ docker compose \
   up --detach --wait --wait-timeout 120
 
 curl --fail --silent --show-error \
-  "http://${FRONTEND_BIND_ADDRESS}:8080/api/tickets" \
+  "http://${FRONTEND_BIND_ADDRESS}:8080/api" \
   > /dev/null
 
 rollback_needed=0

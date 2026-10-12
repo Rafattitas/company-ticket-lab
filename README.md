@@ -14,6 +14,7 @@ TicketDesk gives employees a simple request portal and gives IT a separate opera
 - Responsive IT dashboard with queue totals and urgent-work visibility.
 - Ticket requester, email, phone, category, priority, assignee, and status tracking.
 - JPG, PNG, and WebP attachments up to 5 MB, stored with the database backup.
+- Password-protected IT dashboard with Admin, Agent, and Viewer roles.
 - Search and filtering by status and priority.
 - Automatic, idempotent PostgreSQL schema migrations.
 - One-command local startup with Docker Compose.
@@ -34,6 +35,10 @@ docker compose --env-file .env -f compose.quickstart.yaml up --build -d
 Open [http://localhost:8080](http://localhost:8080) for the employee portal and
 [http://localhost:8080/admin](http://localhost:8080/admin) for the IT dashboard.
 The first startup creates the database schema automatically.
+
+Sign in to the IT dashboard the first time with username `admin` and password
+`admin`. TicketDesk immediately requires a new password of at least 12
+characters before it grants access to tickets or account management.
 
 Check the services:
 
@@ -87,7 +92,9 @@ company-ticket-lab/
 │   ├── migrations/
 │   │   ├── 001_create_tickets.sql
 │   │   ├── 002_ticket_workflow_fields.sql
-│   │   └── 003_requester_contact_and_attachments.sql
+│   │   ├── 003_requester_contact_and_attachments.sql
+│   │   ├── 004_admin_accounts_and_sessions.sql
+│   │   └── 005_require_password_change.sql
 │   ├── routes/
 │   │   └── tickets.js
 │   ├── test/
@@ -153,6 +160,11 @@ Generated directories such as `node_modules/` and `frontend/dist/` are intention
 | `POST` | `/api/tickets` | Create a ticket |
 | `PATCH` | `/api/tickets/:id/status` | Update a ticket status |
 | `PATCH` | `/api/tickets/:id/assignment` | Assign or unassign a ticket |
+| `POST` | `/api/auth/login` | Start an IT session |
+| `POST` | `/api/auth/logout` | End the session |
+| `POST` | `/api/auth/change-password` | Replace a temporary password |
+| `GET` | `/api/auth/me` | Read the signed-in account |
+| `GET/POST/PATCH` | `/api/auth/accounts` | Admin account management |
 
 Allowed ticket states are `open`, `in_progress`, `resolved`, and `closed`.
 Allowed priorities are `low`, `normal`, `high`, and `urgent`. The list endpoint accepts optional `search`, `status`, and `priority` query parameters.
@@ -160,6 +172,13 @@ Allowed priorities are `low`, `normal`, `high`, and `urgent`. The list endpoint 
 The create endpoint requires `requester_name`, `requester_email`,
 `requester_phone`, `title`, and `priority`. An optional `attachment` object may
 contain a base64-encoded JPG, PNG, or WebP image up to 5 MB.
+
+Listing, reading, and changing tickets requires an authenticated IT account.
+Admins manage accounts, Agents read and update tickets, and Viewers have
+read-only access. The initial production credentials are `admin` / `admin`.
+The account cannot use the dashboard until that temporary password is changed.
+New team accounts and administrator password resets follow the same forced
+password-change flow.
 
 ## CI/CD pipeline
 
@@ -215,7 +234,6 @@ Changes are made on short-lived branches and merged through pull requests after 
 
 - Backups are stored locally on the VM; loss of the VM or its disk can remove both live data and backups.
 - The lab uses one VM and one self-hosted deployment runner.
-- The IT dashboard does not yet have authentication; keep the deployment on a trusted LAN until administrator login is implemented.
 - Ticket history, email notifications, and service-level agreements are planned for later releases.
 - Image tags include the Git commit SHA for traceability but remain registry tags; digest-based deployment would provide stronger immutability.
 - The documented PostgreSQL `gosu` finding still requires a separate reachability review.

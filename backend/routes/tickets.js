@@ -49,10 +49,12 @@ function parseAttachment(value) {
   return { fileName, contentType, data };
 }
 
-function createTicketsRouter(pool) {
+function createTicketsRouter(pool, authentication = { requirePermission: () => (request, response, next) => next() }) {
   const router = express.Router();
+  const canReadTickets = authentication.requirePermission("tickets:read");
+  const canUpdateTickets = authentication.requirePermission("tickets:update");
 
-  router.get("/", async (request, response, next) => {
+  router.get("/", canReadTickets, async (request, response, next) => {
     const status = cleanString(request.query.status, 20);
     const priority = cleanString(request.query.priority, 20);
     const search = cleanString(request.query.search, 120);
@@ -122,7 +124,7 @@ function createTicketsRouter(pool) {
     }
   });
 
-  router.get("/:id", async (request, response, next) => {
+  router.get("/:id", canReadTickets, async (request, response, next) => {
     const id = parseTicketId(request.params.id);
 
     if (!id) {
@@ -150,7 +152,7 @@ function createTicketsRouter(pool) {
     }
   });
 
-  router.get("/:id/attachment", async (request, response, next) => {
+  router.get("/:id/attachment", canReadTickets, async (request, response, next) => {
     const id = parseTicketId(request.params.id);
 
     if (!id) {
@@ -270,7 +272,7 @@ function createTicketsRouter(pool) {
     }
   });
 
-  router.patch("/:id/status", async (request, response, next) => {
+  router.patch("/:id/status", canUpdateTickets, async (request, response, next) => {
     const id = parseTicketId(request.params.id);
     const status = request.body.status;
 
@@ -301,7 +303,7 @@ function createTicketsRouter(pool) {
     }
   });
 
-  router.patch("/:id/assignment", async (request, response, next) => {
+  router.patch("/:id/assignment", canUpdateTickets, async (request, response, next) => {
     const id = parseTicketId(request.params.id);
     const assignedTo = cleanString(request.body.assigned_to, 120);
 

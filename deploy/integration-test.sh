@@ -119,6 +119,8 @@ docker run --detach \
   --env DB_NAME=ticket_db \
   --env DB_USER=ticket_app \
   --env DB_PASSWORD_FILE=/run/secrets/postgres_app_password \
+  --env ADMIN_USERNAME=ci-admin \
+  --env ADMIN_PASSWORD=ci-admin-password-12345 \
   "$backend_image" >/dev/null
 
 wait_for_backend
@@ -128,10 +130,16 @@ docker run --rm \
   node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 \
   node -e '
 const baseUrl = "http://backend:3000";
+let cookie = "";
 
 async function request(path, options) {
-  const response = await fetch(`${baseUrl}${path}`, options);
-  const body = await response.json();
+  const requestOptions = options || {};
+  requestOptions.headers = { ...(requestOptions.headers || {}), ...(cookie ? { cookie } : {}) };
+  const response = await fetch(`${baseUrl}${path}`, requestOptions);
+  if (response.headers.get("set-cookie")) {
+    cookie = response.headers.get("set-cookie").split(";")[0];
+  }
+  const body = response.status === 204 ? null : await response.json();
 
   if (!response.ok) {
     throw new Error(`${response.status}: ${JSON.stringify(body)}`);
@@ -141,6 +149,59 @@ async function request(path, options) {
 }
 
 (async () => {
+  await request("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "ci-admin", password: "ci-admin-password-12345" }),
+  });
+
+  const blockedBeforePasswordChange = await fetch(`${baseUrl}/api/tickets`, { headers: { cookie } });
+  if (blockedBeforePasswordChange.status !== 403) {
+    throw new Error("Temporary password unexpectedly received ticket access");
+  }
+
+  await request("/api/auth/change-password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      current_password: "ci-admin-password-12345",
+      new_password: "ci-admin-password-changed-12345",
+    }),
+  });
+
+  await request("/api/auth/accounts", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      username: "ci-agent",
+      display_name: "CI support agent",
+      password: "ci-agent-password-12345",
+      role: "agent",
+    }),
+  });
+
+  await request("/api/auth/logout", { method: "POST" });
+  cookie = "";
+  await request("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "ci-agent", password: "ci-agent-password-12345" }),
+  });
+
+  await request("/api/auth/change-password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      current_password: "ci-agent-password-12345",
+      new_password: "ci-agent-password-changed-12345",
+    }),
+  });
+
+  const forbiddenAccounts = await fetch(`${baseUrl}/api/auth/accounts`, { headers: { cookie } });
+  if (forbiddenAccounts.status !== 403) {
+    throw new Error("Agent unexpectedly received account-management permission");
+  }
+
   const created = await request("/api/tickets", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -175,7 +236,9 @@ async function request(path, options) {
     throw new Error("Created ticket was not returned by GET /api/tickets");
   }
 
-  const attachment = await fetch(`${baseUrl}/api/tickets/${created.ticket.id}/attachment`);
+  const attachment = await fetch(`${baseUrl}/api/tickets/${created.ticket.id}/attachment`, {
+    headers: { cookie },
+  });
   if (!attachment.ok || attachment.headers.get("content-type") !== "image/png") {
     throw new Error("Ticket attachment was not returned correctly");
   }

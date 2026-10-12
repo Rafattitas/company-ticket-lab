@@ -54,6 +54,8 @@ services:
       DB_NAME: ticket_db
       DB_USER: ticket_app
       DB_PASSWORD_FILE: /run/secrets/postgres_app_password
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin
     secrets:
       - postgres_app_password
     networks:

@@ -1,6 +1,7 @@
 const express = require("express");
 const pool = require("./db");
 const runMigrations = require("./migrate");
+const { createAuthentication, ensureBootstrapAdmin } = require("./auth");
 const ticketsRouter = require("./routes/tickets");
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -60,7 +61,9 @@ app.get("/api", (request, response) => {
     message: "Company Ticket API is running",
   });
 });
-app.use("/api/tickets", ticketsRouter(pool));
+const authentication = createAuthentication(pool);
+app.use("/api/auth", authentication.router);
+app.use("/api/tickets", ticketsRouter(pool, authentication));
 
 app.use((error, request, response, next) => {
   console.error("Unhandled request error:", error.message);
@@ -73,6 +76,7 @@ let server;
 
 async function start() {
   await runMigrations(pool);
+  await ensureBootstrapAdmin(pool);
   server = app.listen(port, "0.0.0.0", () => {
     console.log(`Backend listening on port ${port}`);
   });
