@@ -1,44 +1,117 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+
+const statuses = [
+  ['open', 'Open'],
+  ['in_progress', 'In progress'],
+  ['resolved', 'Resolved'],
+  ['closed', 'Closed'],
+]
+
+const priorities = [
+  ['low', 'Low'],
+  ['normal', 'Normal'],
+  ['high', 'High'],
+  ['urgent', 'Urgent'],
+]
+
+const categories = ['General', 'Access', 'Hardware', 'Network', 'Software', 'Other']
+
+function friendlyError(code) {
+  const messages = {
+    title_must_be_between_3_and_200_characters: 'Enter a title between 3 and 200 characters.',
+    requester_name_must_be_between_2_and_120_characters: 'Enter the requester name.',
+    invalid_ticket_priority: 'Choose a valid priority.',
+  }
+
+  return messages[code] || 'Something went wrong. Please try again.'
+}
+
+async function apiRequest(path, options) {
+  const response = await fetch(path, options)
+  const body = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(friendlyError(body.error))
+  }
+
+  return body
+}
+
+function formatDate(value) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value))
+}
 
 function App() {
   const [tickets, setTickets] = useState([])
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [showForm, setShowForm] = useState(false)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [priorityFilter, setPriorityFilter] = useState('all')
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    requester_name: '',
+    category: 'General',
+    priority: 'normal',
+  })
 
   async function loadTickets(signal) {
-    const response = await fetch('/api/tickets', { signal })
-
-    if (!response.ok) {
-      throw new Error('Could not load tickets')
-    }
-
-    const data = await response.json()
+    const data = await apiRequest('/api/tickets', { signal })
     setTickets(data.tickets)
   }
+
   useEffect(() => {
     const controller = new AbortController()
 
-    fetch('/api/tickets', { signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error('Could not load tickets')
-        }
-        return response.json()
-      })
-      .then((data) => setTickets(data.tickets))
+    // The initial request intentionally synchronizes remote ticket state.
+    // oxlint-disable-next-line react/set-state-in-effect
+    loadTickets(controller.signal)
       .catch((cause) => {
-        if (cause.name !== 'AbortError') {
-          setError(cause.message)
-        }
+        if (cause.name !== 'AbortError') setError(cause.message)
       })
       .finally(() => setLoading(false))
 
     return () => controller.abort()
   }, [])
+
+  const counts = useMemo(() => ({
+    all: tickets.length,
+    open: tickets.filter((ticket) => ticket.status === 'open').length,
+    in_progress: tickets.filter((ticket) => ticket.status === 'in_progress').length,
+    urgent: tickets.filter(
+      (ticket) => ticket.priority === 'urgent' && !['resolved', 'closed'].includes(ticket.status),
+    ).length,
+  }), [tickets])
+
+  const visibleTickets = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase()
+
+    return tickets.filter((ticket) => {
+      const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter
+      const matchesPriority = priorityFilter === 'all' || ticket.priority === priorityFilter
+      const searchable = [
+        ticket.id,
+        ticket.title,
+        ticket.description,
+        ticket.requester_name,
+        ticket.assigned_to,
+        ticket.category,
+      ].join(' ').toLowerCase()
+
+      return matchesStatus && matchesPriority && searchable.includes(normalizedSearch)
+    })
+  }, [tickets, search, statusFilter, priorityFilter])
+
+  function updateForm(field, value) {
+    setForm((current) => ({ ...current, [field]: value }))
+  }
 
   async function createTicket(event) {
     event.preventDefault()
@@ -46,19 +119,21 @@ function App() {
     setSaving(true)
 
     try {
-      const response = await fetch('/api/tickets', {
+      const data = await apiRequest('/api/tickets', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ title, description }),
+        body: JSON.stringify(form),
       })
 
-      if (!response.ok) {
-        throw new Error('Could not create ticket')
-      }
-
-      setTitle('')
-      setDescription('')
-      await loadTickets()
+      setTickets((current) => [data.ticket, ...current])
+      setForm({
+        title: '',
+        description: '',
+        requester_name: '',
+        category: 'General',
+        priority: 'normal',
+      })
+      setShowForm(false)
     } catch (cause) {
       setError(cause.message)
     } finally {
@@ -66,61 +141,135 @@ function App() {
     }
   }
 
+  async function updateStatus(ticketId, status) {
+    setError('')
+
+    try {
+      const data = await apiRequest(`/api/tickets/${ticketId}/status`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      setTickets((current) => current.map(
+        (ticket) => ticket.id === ticketId ? data.ticket : ticket,
+      ))
+    } catch (cause) {
+      setError(cause.message)
+    }
+  }
+
+  async function assignTicket(ticketId, assignedTo) {
+    setError('')
+
+    try {
+      const data = await apiRequest(`/api/tickets/${ticketId}/assignment`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ assigned_to: assignedTo }),
+      })
+      setTickets((current) => current.map(
+        (ticket) => ticket.id === ticketId ? data.ticket : ticket,
+      ))
+    } catch (cause) {
+      setError(cause.message)
+    }
+  }
+
   return (
-    <main className="app">
-      <header className="app-header">
-        <p className="eyebrow">Company Ticket Lab</p>
-        <h1>Support tickets</h1>
-        <p>Track internal requests in one place.</p>
-      </header>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <span className="brand-mark">T</span>
+          <div><strong>TicketDesk</strong><small>Support workspace</small></div>
+        </div>
+        <nav aria-label="Main navigation">
+          <a className="nav-item active" href="#workspace">Overview</a>
+          <a className="nav-item" href="#tickets">All tickets</a>
+          <a className="nav-item" href="#new-ticket" onClick={() => setShowForm(true)}>New request</a>
+        </nav>
+        <div className="sidebar-note">
+          <span className="online-dot" /> System operational
+        </div>
+      </aside>
 
-      <section className="panel" aria-labelledby="new-ticket-title">
-        <h2 id="new-ticket-title">New ticket</h2>
-        <form onSubmit={createTicket}>
-          <label htmlFor="title">Title</label>
-          <input
-            id="title"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            minLength={3}
-            maxLength={200}
-            required
-          />
-
-          <label htmlFor="description">Description</label>
-          <textarea
-            id="description"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            maxLength={5000}
-            rows={4}
-          />
-
-          <button disabled={saving} type="submit">
-            {saving ? 'Creating...' : 'Create ticket'}
+      <main className="workspace" id="workspace">
+        <header className="topbar">
+          <div>
+            <p className="eyebrow">Support operations</p>
+            <h1>Ticket workspace</h1>
+            <p className="subtitle">Review, prioritize, and resolve every request from one place.</p>
+          </div>
+          <button className="primary-button" onClick={() => setShowForm((value) => !value)}>
+            {showForm ? 'Close form' : '+ New ticket'}
           </button>
-        </form>
-      </section>
+        </header>
 
-      <section className="panel" aria-labelledby="tickets-title">
-        <h2 id="tickets-title">Tickets</h2>
-        {error && <p role="alert" className="error">{error}</p>}
-        {loading && <p>Loading tickets...</p>}
-        {!loading && tickets.length === 0 && <p>No tickets yet.</p>}
+        <section className="stats" aria-label="Ticket summary">
+          <article><span>Total tickets</span><strong>{counts.all}</strong><small>All recorded requests</small></article>
+          <article><span>Open</span><strong>{counts.open}</strong><small>Waiting for action</small></article>
+          <article><span>In progress</span><strong>{counts.in_progress}</strong><small>Currently being handled</small></article>
+          <article className={counts.urgent ? 'urgent-stat' : ''}><span>Urgent</span><strong>{counts.urgent}</strong><small>Needs immediate attention</small></article>
+        </section>
 
-        <ul className="tickets">
-          {tickets.map((ticket) => (
-            <li key={ticket.id}>
-              <div>
-                <strong>#{ticket.id} · {ticket.title}</strong>
-                <p>{ticket.description || 'No description'}</p>
+        {error && <div role="alert" className="alert"><strong>Could not complete the request.</strong><span>{error}</span></div>}
+
+        {showForm && (
+          <section className="create-panel" id="new-ticket" aria-labelledby="new-ticket-title">
+            <div className="section-heading">
+              <div><p className="eyebrow">New request</p><h2 id="new-ticket-title">Create a support ticket</h2></div>
+              <p>Give the support team enough context to take action.</p>
+            </div>
+            <form onSubmit={createTicket}>
+              <div className="form-grid">
+                <label>Requester name<input value={form.requester_name} onChange={(event) => updateForm('requester_name', event.target.value)} minLength={2} maxLength={120} required placeholder="Your name" /></label>
+                <label>Category<select value={form.category} onChange={(event) => updateForm('category', event.target.value)}>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
+                <label className="wide-field">Title<input value={form.title} onChange={(event) => updateForm('title', event.target.value)} minLength={3} maxLength={200} required placeholder="A short summary of the issue" /></label>
+                <label>Priority<select value={form.priority} onChange={(event) => updateForm('priority', event.target.value)}>{priorities.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                <label className="wide-field">Description<textarea value={form.description} onChange={(event) => updateForm('description', event.target.value)} maxLength={5000} rows={5} placeholder="What happened, what did you expect, and what have you tried?" /></label>
               </div>
-              <span className="status">{ticket.status.replaceAll('_', ' ')}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </main>
+              <div className="form-actions"><button className="primary-button" disabled={saving} type="submit">{saving ? 'Creating…' : 'Create ticket'}</button><button className="secondary-button" type="button" onClick={() => setShowForm(false)}>Cancel</button></div>
+            </form>
+          </section>
+        )}
+
+        <section className="ticket-panel" id="tickets" aria-labelledby="tickets-title">
+          <div className="section-heading">
+            <div><p className="eyebrow">Queue</p><h2 id="tickets-title">Support tickets</h2></div>
+            <p>{visibleTickets.length} of {tickets.length} tickets</p>
+          </div>
+
+          <div className="filters">
+            <label className="search-field"><span>Search</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search title, requester, assignee…" /></label>
+            <label><span>Status</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option>{statuses.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+            <label><span>Priority</span><select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option value="all">All priorities</option>{priorities.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+          </div>
+
+          {loading && <div className="empty-state">Loading the ticket queue…</div>}
+          {!loading && visibleTickets.length === 0 && <div className="empty-state"><strong>No tickets found</strong><span>Try changing the filters or create a new request.</span></div>}
+
+          <div className="ticket-list">
+            {visibleTickets.map((ticket) => (
+              <article className="ticket-card" key={ticket.id}>
+                <div className={`priority-line priority-${ticket.priority}`} />
+                <div className="ticket-main">
+                  <div className="ticket-heading">
+                    <div className="ticket-tags"><span className={`priority-badge priority-${ticket.priority}`}>{ticket.priority}</span><span className="category-badge">{ticket.category}</span></div>
+                    <span className="ticket-id">#{ticket.id}</span>
+                  </div>
+                  <h3>{ticket.title}</h3>
+                  <p className="ticket-description">{ticket.description || 'No additional description provided.'}</p>
+                  <div className="ticket-meta"><span>Requested by <strong>{ticket.requester_name}</strong></span><span>{formatDate(ticket.created_at)}</span></div>
+                </div>
+                <div className="ticket-controls">
+                  <label>Status<select value={ticket.status} onChange={(event) => updateStatus(ticket.id, event.target.value)}>{statuses.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                  <label>Assignee<input key={`${ticket.id}-${ticket.assigned_to}`} defaultValue={ticket.assigned_to} placeholder="Unassigned" maxLength={120} onBlur={(event) => { if (event.target.value.trim() !== ticket.assigned_to) assignTicket(ticket.id, event.target.value) }} /></label>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      </main>
+    </div>
   )
 }
 

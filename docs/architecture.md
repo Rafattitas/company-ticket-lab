@@ -49,8 +49,10 @@ flowchart TB
 1. React sends a same-origin request such as `GET /api/tickets`.
 2. Nginx matches `/api/` and proxies the request to `http://backend:3000`.
 3. The backend resolves the Compose service name `postgres` on the internal network.
-4. PostgreSQL reads or updates the external data volume.
-5. The JSON response returns through the backend, Nginx, and browser.
+4. On startup, the backend applies any missing ordered SQL migrations before it
+   begins listening for requests.
+5. PostgreSQL reads or updates the external data volume.
+6. The JSON response returns through the backend, Nginx, and browser.
 
 The browser never connects directly to the backend or PostgreSQL.
 

@@ -17,8 +17,10 @@ if (!Number.isInteger(port)) {
   throw new Error("DB_PORT must be an integer");
 }
 
-const passwordFile = requiredEnvironmentVariable("DB_PASSWORD_FILE");
-const password = fs.readFileSync(passwordFile, "utf8").trim();
+const passwordFile = process.env.DB_PASSWORD_FILE;
+const password = passwordFile
+  ? fs.readFileSync(passwordFile, "utf8").trim()
+  : requiredEnvironmentVariable("DB_PASSWORD");
 
 if (!password) {
   throw new Error("Database password file is empty");
