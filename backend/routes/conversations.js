@@ -38,7 +38,7 @@ async function addComment(pool, id, body, author, internal) {
   return pool.query(
     `WITH updated AS (
        UPDATE tickets SET updated_at = CURRENT_TIMESTAMP,
-         first_response_at = CASE WHEN $3 = 'staff' AND NOT $6::boolean THEN COALESCE(first_response_at, CURRENT_TIMESTAMP) ELSE first_response_at END
+         first_response_at = CASE WHEN $3::varchar(12) = 'staff' AND NOT $6::boolean THEN COALESCE(first_response_at, CURRENT_TIMESTAMP) ELSE first_response_at END
        WHERE id = $1 RETURNING id
      ) INSERT INTO ticket_comments
        (ticket_id, body, author_kind, author_name, actor_id, internal)

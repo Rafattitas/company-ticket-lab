@@ -311,14 +311,14 @@ function createTicketsRouter(pool, authentication = { requirePermission: () => (
         `WITH previous AS MATERIALIZED (
            SELECT id, status FROM tickets WHERE id = $2 FOR UPDATE
          ), updated AS (
-           UPDATE tickets SET status = $1, updated_at = CURRENT_TIMESTAMP,
-             resolved_at = CASE WHEN $1 IN ('resolved', 'closed') THEN COALESCE(resolved_at, CURRENT_TIMESTAMP) ELSE NULL END
+           UPDATE tickets SET status = $1::varchar(20), updated_at = CURRENT_TIMESTAMP,
+             resolved_at = CASE WHEN $1::varchar(20) IN ('resolved', 'closed') THEN COALESCE(resolved_at, CURRENT_TIMESTAMP) ELSE NULL END
            WHERE id = (SELECT id FROM previous) RETURNING ${ticketColumns}
          ), event AS (
            INSERT INTO ticket_events (ticket_id, kind, actor_name, actor_id, old_value, new_value)
-           SELECT previous.id, 'status_changed', $3, $4, previous.status, $1
+           SELECT previous.id, 'status_changed', $3, $4, previous.status, $1::text
            FROM previous JOIN updated ON updated.id = previous.id
-           WHERE previous.status IS DISTINCT FROM $1 RETURNING id
+           WHERE previous.status IS DISTINCT FROM $1::varchar(20) RETURNING id
          ) SELECT * FROM updated`,
         [status, id, request.user?.display_name || "IT support", request.user?.id || null],
       );
