@@ -2,9 +2,23 @@
 
 [![CI/CD Pipeline](https://github.com/Rafattitas/company-ticket-lab/actions/workflows/pipeline.yml/badge.svg)](https://github.com/Rafattitas/company-ticket-lab/actions/workflows/pipeline.yml)
 
-A self-hosted support-ticket system with a React dashboard, Express API, PostgreSQL storage, Docker quick start, and a production CI/CD reference implementation.
+A self-hosted IT ticketing system with an employee request portal, a role-based IT dashboard, image attachments, and Docker CI/CD.
 
 TicketDesk gives employees a simple request portal and gives IT a separate operational dashboard for triage, assignment, and resolution.
+
+## How people use TicketDesk
+
+1. An employee opens `/`, enters their name, email and phone, chooses the issue
+   priority, describes the problem, and optionally attaches an image.
+2. An IT team member signs in at `/admin`. On first sign-in, they must replace
+   their temporary password before accessing the dashboard.
+3. Agents and Admins review the queue, assign work, and move tickets through
+   `open`, `in_progress`, `resolved`, and `closed`.
+4. Admins create team accounts and manage roles. Viewers can inspect tickets
+   without changing them.
+
+See [Accounts and permissions](docs/accounts-and-permissions.md) for the initial
+login, password-change rules, and the role matrix.
 
 > This is a training environment. It demonstrates production practices, but it is not an approved production platform.
 
@@ -98,8 +112,10 @@ company-ticket-lab/
 │   ├── routes/
 │   │   └── tickets.js
 │   ├── test/
+│   │   ├── auth.test.js
 │   │   └── tickets.test.js
 │   ├── Dockerfile
+│   ├── auth.js
 │   ├── db.js
 │   ├── migrate.js
 │   └── server.js
@@ -115,6 +131,7 @@ company-ticket-lab/
 │   ├── publish-images.sh
 │   └── scan-images.sh
 ├── docs/
+│   ├── accounts-and-permissions.md
 │   ├── architecture.md
 │   ├── database-access.md
 │   ├── deployment.md
@@ -130,6 +147,7 @@ company-ticket-lab/
 ├── .env.example
 ├── .gitignore
 ├── compose.quickstart.yaml
+├── AGENTS.md
 ├── CONTRIBUTING.md
 ├── LICENSE
 └── README.md
@@ -164,7 +182,8 @@ Generated directories such as `node_modules/` and `frontend/dist/` are intention
 | `POST` | `/api/auth/logout` | End the session |
 | `POST` | `/api/auth/change-password` | Replace a temporary password |
 | `GET` | `/api/auth/me` | Read the signed-in account |
-| `GET/POST/PATCH` | `/api/auth/accounts` | Admin account management |
+| `GET/POST` | `/api/auth/accounts` | List or create IT accounts (Admin only) |
+| `PATCH` | `/api/auth/accounts/:id` | Update an IT account (Admin only) |
 
 Allowed ticket states are `open`, `in_progress`, `resolved`, and `closed`.
 Allowed priorities are `low`, `normal`, `high`, and `urgent`. The list endpoint accepts optional `search`, `status`, and `priority` query parameters.
@@ -179,6 +198,9 @@ read-only access. The initial production credentials are `admin` / `admin`.
 The account cannot use the dashboard until that temporary password is changed.
 New team accounts and administrator password resets follow the same forced
 password-change flow.
+
+Health routes in the table are backend routes; they are not all exposed by the
+frontend proxy. Anonymous access to protected ticket endpoints returns 401.
 
 ## CI/CD pipeline
 
@@ -198,7 +220,7 @@ publish
 production approval
         ↓
 deploy
-  └── backup, pull, Compose update, health check, and rollback on failure
+  └── backup, pull, Compose update, health check, and image rollback on failure
 ```
 
 The production job runs on the `lab-prod` self-hosted runner and is protected by the GitHub `production` environment. Database passwords remain on the VM and are never stored in GitHub.
@@ -230,10 +252,29 @@ Read-only database inspection from a workstation is documented in [Database acce
 
 Changes are made on short-lived branches and merged through pull requests after the verification job succeeds. See [Contributing](CONTRIBUTING.md) for branch names, checks, commit guidance, and the rule against committing secrets.
 
+AI coding assistants should read [AGENTS.md](AGENTS.md) before editing. It maps
+the source files, explains authentication and migration rules, lists checks,
+and distinguishes repository deployment code from the installed VM command.
+
+## Documentation
+
+| Guide | What it explains |
+|---|---|
+| [Accounts and permissions](docs/accounts-and-permissions.md) | Initial admin login, password changes, and IT roles |
+| [Architecture](docs/architecture.md) | Services, request flow, networks, and persistent data |
+| [Deployment](docs/deployment.md) | CI/CD, GHCR releases, host setup, and deployment-script installation |
+| [Operations runbook](docs/operations-runbook.md) | Checks, logs, backups, and troubleshooting |
+| [Database access](docs/database-access.md) | Workstation access through an SSH tunnel |
+| [Security scanning](docs/security-scanning.md) | Trivy gate and open review items |
+| [Contributing](CONTRIBUTING.md) | Branches, checks, and pull requests |
+| [AI contributor guide](AGENTS.md) | Code map and implementation constraints |
+
 ## Current limitations
 
 - Backups are stored locally on the VM; loss of the VM or its disk can remove both live data and backups.
 - The lab uses one VM and one self-hosted deployment runner.
+- The current LAN deployment uses HTTP. HTTPS and Secure session cookies need
+  deployment-specific configuration before external exposure.
 - Ticket history, email notifications, and service-level agreements are planned for later releases.
 - Image tags include the Git commit SHA for traceability but remain registry tags; digest-based deployment would provide stronger immutability.
 - The documented PostgreSQL `gosu` finding still requires a separate reachability review.

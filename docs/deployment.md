@@ -78,6 +78,24 @@ self-hosted, Linux, X64, production, company-ticket
 
 The tracked `deploy/production-deploy.sh` file is the reviewed source for the installed command. Updating the tracked file does not automatically replace the root-owned copy; installation is a separate administrative action.
 
+After reviewing and merging a deployment-script change, an administrator can
+install the version from the protected checkout. First verify that the checkout
+contains the intended reviewed commit:
+
+```bash
+sudo git -C /srv/company-ticket/repository log --oneline -1
+sudo bash -n /srv/company-ticket/repository/deploy/production-deploy.sh
+sudo install -o root -g root -m 0755 \
+  /srv/company-ticket/repository/deploy/production-deploy.sh \
+  /usr/local/sbin/company-ticket-deploy
+sudo bash -n /usr/local/sbin/company-ticket-deploy
+sudo cmp /srv/company-ticket/repository/deploy/production-deploy.sh \
+  /usr/local/sbin/company-ticket-deploy
+```
+
+Successful syntax and comparison checks print no output and exit zero. The
+runner must not receive permission to replace this root-owned command itself.
+
 ## Host network configuration
 
 Before deploying this Compose version, verify the VM's current LAN address:
@@ -115,11 +133,16 @@ assigned to the VM. Devices on the trusted LAN then use
 7. Pulls all candidate images from GHCR.
 8. Atomically activates the candidate image reference file.
 9. Runs `docker compose up --detach --wait`.
-10. Calls the ticket API through the published frontend endpoint.
+10. Performs an anonymous HTTP smoke check at `/api` through the frontend.
 11. Keeps the latest ten local backup sets.
 12. Prints the final Compose service state.
 
-If Compose or the API check fails after activation, the error trap restores the previous image references and attempts to start the previous release.
+If Compose or the HTTP check fails after activation, the error trap restores the previous image references and attempts to start the previous release. This restores image references, not the database schema or its contents.
+
+The `/api` smoke check can succeed through the frontend SPA fallback. Backend
+and database readiness is checked by Compose health checks; authenticated ticket
+operations require a separate functional check. `/api/tickets` requires login
+and must not be used for an anonymous success check.
 
 ## Manual verification
 
@@ -133,7 +156,7 @@ sudo docker compose \
   ps
 
 source /etc/company-ticket/host.env
-curl -fsS "http://${FRONTEND_BIND_ADDRESS}:8080/api/tickets"
+curl -fsS "http://${FRONTEND_BIND_ADDRESS}:8080/admin" > /dev/null
 
 sudo ls -lht /var/backups/company-ticket | head
 ```
@@ -141,7 +164,8 @@ sudo ls -lht /var/backups/company-ticket | head
 Expected results:
 
 - PostgreSQL, backend, and frontend are `healthy`.
-- The API returns the existing tickets.
+- The admin page loads; signing in shows the password-change screen on a fresh
+  account, or the ticket dashboard after the password has been changed.
 - A new pair of backup files exists for the deployment timestamp.
 
 ## Manual deployment
