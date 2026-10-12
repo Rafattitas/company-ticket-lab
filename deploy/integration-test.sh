@@ -266,6 +266,13 @@ async function request(path, options) {
   await request(`/api/tickets/${created.ticket.id}/assignment`, {
     method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ assignee_id: ciAgent.id }),
   });
+  const departmentDirectory = await request("/api/operations/departments");
+  const destination = departmentDirectory.departments.find((department) => department.name === "Infrastructure");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await request(`/api/tickets/${created.ticket.id}/department`, {
+      method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ department_id: destination.id }),
+    });
+  }
   await request(`/api/tickets/${created.ticket.id}/status`, {
     method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ status: "in_progress" }),
   });
@@ -290,6 +297,7 @@ async function request(path, options) {
   if (!staffThread.events.some((item) => item.kind === "assignment_changed" && item.new_value === "CI support agent")) {
     throw new Error("Assignment audit is missing");
   }
+  if (staffThread.events.filter((item) => item.kind === "department_changed").length !== 1) throw new Error("Department audit missed a change or recorded a no-op");
 
   // Tracking never uses the staff cookie or puts its token in a URL.
   const trackingPath = `/api/tracking/${created.ticket.id}`;
