@@ -32,6 +32,18 @@ The verification job performs these steps in order:
 
 The integration script always removes its temporary containers, network, volume, and secret directory through an exit trap.
 
+## Database migrations
+
+The backend image contains the ordered SQL files from `backend/migrations/`.
+Before it starts accepting HTTP traffic, it creates the migration ledger and
+applies every migration that has not already been recorded. Migration SQL is
+idempotent so an existing production database can be upgraded without deleting
+ticket data, while a new Quick Start installation receives the complete schema.
+
+The deployment backup is created before the new backend starts. A failed image
+deployment rolls back the image references, but a schema rollback still requires
+a compatible forward fix or a database restore.
+
 ## Publish job
 
 The publish job downloads and loads the image artifact produced by `verify`. It does not rebuild the images. This ensures GHCR receives the same image content that passed testing and scanning.

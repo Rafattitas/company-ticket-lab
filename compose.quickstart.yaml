@@ -1,0 +1,66 @@
+name: ticketdesk
+
+services:
+  postgres:
+    build:
+      context: ./deploy/postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ticket_db
+      POSTGRES_USER: ticket_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ticketdesk-local-password}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - ticketdesk_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username=ticket_app --dbname=ticket_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ticket_db
+      DB_USER: ticket_app
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-ticketdesk-local-password}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  ticketdesk_data:

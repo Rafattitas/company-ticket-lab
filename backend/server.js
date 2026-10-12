@@ -1,5 +1,6 @@
 const express = require("express");
 const pool = require("./db");
+const runMigrations = require("./migrate");
 const ticketsRouter = require("./routes/tickets");
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -8,6 +9,14 @@ let shuttingDown = false;
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "100kb" }));
+app.use((request, response, next) => {
+  response.set({
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+  });
+  next();
+});
 
 app.get("/health/live", (request, response) => {
   response.status(shuttingDown ? 503 : 200).json({
@@ -60,8 +69,19 @@ app.use((error, request, response, next) => {
     error: "internal_server_error",
   });
 });
-const server = app.listen(port, "0.0.0.0", () => {
-  console.log(`Backend listening on port ${port}`);
+let server;
+
+async function start() {
+  await runMigrations(pool);
+  server = app.listen(port, "0.0.0.0", () => {
+    console.log(`Backend listening on port ${port}`);
+  });
+}
+
+start().catch(async (error) => {
+  console.error("Backend startup failed:", error.message);
+  await pool.end().catch(() => {});
+  process.exit(1);
 });
 
 async function shutdown(signal) {
@@ -71,6 +91,11 @@ async function shutdown(signal) {
 
   shuttingDown = true;
   console.log(`${signal} received. Shutting down.`);
+
+  if (!server) {
+    await pool.end();
+    process.exit(0);
+  }
 
   server.close(async () => {
     try {

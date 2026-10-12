@@ -30,6 +30,7 @@ jobs:
         run: |
           bash -n deploy/*.sh
           docker compose --file deploy/compose.yaml config --quiet
+          docker compose --file compose.quickstart.yaml config --quiet
 
       - name: Test backend
         run: |

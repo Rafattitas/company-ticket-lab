@@ -101,7 +101,7 @@ docker run --rm \
   --mount "type=bind,src=${repo_dir}/backend/migrations,dst=/migrations,readonly" \
   --mount "type=bind,src=${secret_dir}/postgres_app_password,dst=/run/secrets/postgres_app_password,readonly" \
   "$postgres_image" \
-  -ceu 'export PGPASSWORD="$(cat /run/secrets/postgres_app_password)"; exec psql --host=postgres --username=ticket_app --dbname=ticket_db --set=ON_ERROR_STOP=1 --file=/migrations/001_create_tickets.sql'
+  -ceu 'export PGPASSWORD="$(cat /run/secrets/postgres_app_password)"; for migration in /migrations/*.sql; do psql --host=postgres --username=ticket_app --dbname=ticket_db --set=ON_ERROR_STOP=1 --file="$migration"; done'
 
 docker run --detach \
   --name "$backend_name" \
@@ -147,12 +147,21 @@ async function request(path, options) {
     body: JSON.stringify({
       title: "CI integration ticket",
       description: "Created by the temporary integration test",
+      requester_name: "CI pipeline",
+      category: "Software",
+      priority: "high",
     }),
+  });
+
+  await request(`/api/tickets/${created.ticket.id}/status`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ status: "in_progress" }),
   });
 
   const listed = await request("/api/tickets");
   const exists = listed.tickets.some(
-    (ticket) => ticket.id === created.ticket.id,
+    (ticket) => ticket.id === created.ticket.id && ticket.status === "in_progress",
   );
 
   if (!exists) {

@@ -1,10 +1,49 @@
-# Company Ticket Lab
+# TicketDesk
 
 [![CI/CD Pipeline](https://github.com/Rafattitas/company-ticket-lab/actions/workflows/pipeline.yml/badge.svg)](https://github.com/Rafattitas/company-ticket-lab/actions/workflows/pipeline.yml)
 
-A production-style Docker and DevOps training project for a small support-ticket application. The repository demonstrates application containerization, network isolation, persistent PostgreSQL storage, CI security gates, GHCR image publishing, and an approval-controlled deployment to an Ubuntu Server VM.
+A self-hosted support-ticket system with a React dashboard, Express API, PostgreSQL storage, Docker quick start, and a production CI/CD reference implementation.
+
+TicketDesk lets a small support or IT team record requests, set priorities and categories, assign owners, search the queue, and move work through a clear status workflow.
 
 > This is a training environment. It demonstrates production practices, but it is not an approved production platform.
+
+## Features
+
+- Responsive ticket dashboard with queue totals and urgent-work visibility.
+- Ticket requester, category, priority, assignee, and status tracking.
+- Search and filtering by status and priority.
+- Automatic, idempotent PostgreSQL schema migrations.
+- One-command local startup with Docker Compose.
+- Health checks, persistent storage, non-root containers, and restricted capabilities.
+- Tested container images, Trivy scanning, GHCR publishing, backups, and approval-controlled production deployment.
+
+## Quick start
+
+Requirements: Docker Engine with Docker Compose v2.
+
+```bash
+git clone https://github.com/Rafattitas/company-ticket-lab.git
+cd company-ticket-lab
+cp .env.example .env
+docker compose --env-file .env -f compose.quickstart.yaml up --build -d
+```
+
+Open [http://localhost:8080](http://localhost:8080). The first startup creates the database schema automatically.
+
+Check the services:
+
+```bash
+docker compose --env-file .env -f compose.quickstart.yaml ps
+```
+
+Stop the application while keeping its data:
+
+```bash
+docker compose --env-file .env -f compose.quickstart.yaml down
+```
+
+To delete the local database as well, add `--volumes` to the final command.
 
 ## Architecture
 
@@ -42,13 +81,15 @@ company-ticket-lab/
 │       └── pipeline.yml
 ├── backend/
 │   ├── migrations/
-│   │   └── 001_create_tickets.sql
+│   │   ├── 001_create_tickets.sql
+│   │   └── 002_ticket_workflow_fields.sql
 │   ├── routes/
 │   │   └── tickets.js
 │   ├── test/
 │   │   └── tickets.test.js
 │   ├── Dockerfile
 │   ├── db.js
+│   ├── migrate.js
 │   └── server.js
 ├── deploy/
 │   ├── postgres/
@@ -74,8 +115,11 @@ company-ticket-lab/
 │   ├── nginx.conf
 │   └── package.json
 ├── .gitattributes
+├── .env.example
 ├── .gitignore
+├── compose.quickstart.yaml
 ├── CONTRIBUTING.md
+├── LICENSE
 └── README.md
 ```
 
@@ -102,8 +146,10 @@ Generated directories such as `node_modules/` and `frontend/dist/` are intention
 | `GET` | `/api/tickets/:id` | Read one ticket |
 | `POST` | `/api/tickets` | Create a ticket |
 | `PATCH` | `/api/tickets/:id/status` | Update a ticket status |
+| `PATCH` | `/api/tickets/:id/assignment` | Assign or unassign a ticket |
 
 Allowed ticket states are `open`, `in_progress`, `resolved`, and `closed`.
+Allowed priorities are `low`, `normal`, `high`, and `urgent`. The list endpoint accepts optional `search`, `status`, and `priority` query parameters.
 
 ## CI/CD pipeline
 
@@ -160,5 +206,10 @@ Changes are made on short-lived branches and merged through pull requests after 
 - Backups are stored locally on the VM; loss of the VM or its disk can remove both live data and backups.
 - The lab uses one VM and one self-hosted deployment runner.
 - The ticket UI has no user authentication; every device that can reach the LAN endpoint can view and change tickets.
+- Ticket history, file attachments, email notifications, and service-level agreements are planned for later releases.
 - Image tags include the Git commit SHA for traceability but remain registry tags; digest-based deployment would provide stronger immutability.
 - The documented PostgreSQL `gosu` finding still requires a separate reachability review.
+
+## License
+
+TicketDesk is available under the [MIT License](LICENSE).

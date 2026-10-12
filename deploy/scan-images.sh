@@ -17,6 +17,39 @@ scan() {
     image --image-src docker --scanners vuln --no-progress "$@"
 }
 
+gate() {
+  local image="$1"
+  shift
+
+  echo "Fixable findings gate: $image"
+  scan "$@" --severity HIGH,CRITICAL --ignore-unfixed --format json --exit-code 0 "$image" \
+    | python3 -c '
+import json
+import sys
+
+report = json.load(sys.stdin)
+findings = [
+    (result["Target"], vulnerability)
+    for result in report.get("Results", [])
+    for vulnerability in result.get("Vulnerabilities", [])
+]
+
+if findings:
+    for target, vulnerability in findings:
+        print(
+            target,
+            vulnerability["VulnerabilityID"],
+            vulnerability["PkgName"],
+            vulnerability["InstalledVersion"],
+            "->",
+            vulnerability.get("FixedVersion", "unknown"),
+        )
+    sys.exit(1)
+
+print("No fixable HIGH or CRITICAL findings")
+'
+}
+
 for image in "$@"; do
   echo "Full scan summary: $image"
   scan --severity HIGH,CRITICAL --format json --exit-code 0 "$image" \
@@ -24,7 +57,7 @@ for image in "$@"; do
 done
 
 echo "Checking fixable HIGH and CRITICAL findings"
-scan --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$1" > /dev/null
-scan --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$2" > /dev/null
-scan --pkg-types os --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$3" > /dev/null
+gate "$1"
+gate "$2"
+gate "$3" --pkg-types os
 echo "Trivy gate passed; review PostgreSQL gosu findings separately."

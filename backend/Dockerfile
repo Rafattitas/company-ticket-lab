@@ -15,12 +15,13 @@ FROM base AS runtime
 
 ENV NODE_ENV=production
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends --only-upgrade libpcre2-8-0 \
+    && apt-get upgrade -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
-COPY --chown=node:node package.json package-lock.json server.js db.js ./
+COPY --chown=node:node package.json package-lock.json server.js db.js migrate.js ./
 COPY --chown=node:node routes ./routes
+COPY --chown=node:node migrations ./migrations
 USER node
 
 EXPOSE 3000

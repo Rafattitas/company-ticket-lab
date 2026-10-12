@@ -1,6 +1,7 @@
-# Company Ticket Lab — Frontend
+# TicketDesk — Frontend
 
-React and Vite frontend for creating and viewing support tickets.
+React and Vite dashboard for creating, filtering, assigning, prioritizing, and
+updating support tickets.
 
 ## Build
 
