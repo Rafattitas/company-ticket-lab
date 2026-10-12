@@ -148,8 +148,15 @@ async function request(path, options) {
       title: "CI integration ticket",
       description: "Created by the temporary integration test",
       requester_name: "CI pipeline",
+      requester_email: "ci@example.com",
+      requester_phone: "+20 100 000 0000",
       category: "Software",
       priority: "high",
+      attachment: {
+        file_name: "test.png",
+        content_type: "image/png",
+        data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      },
     }),
   });
 
@@ -166,6 +173,11 @@ async function request(path, options) {
 
   if (!exists) {
     throw new Error("Created ticket was not returned by GET /api/tickets");
+  }
+
+  const attachment = await fetch(`${baseUrl}/api/tickets/${created.ticket.id}/attachment`);
+  if (!attachment.ok || attachment.headers.get("content-type") !== "image/png") {
+    throw new Error("Ticket attachment was not returned correctly");
   }
 
   console.log("Integration test passed");

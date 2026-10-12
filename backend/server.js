@@ -8,7 +8,7 @@ const port = Number(process.env.PORT || 3000);
 let shuttingDown = false;
 
 app.disable("x-powered-by");
-app.use(express.json({ limit: "100kb" }));
+app.use(express.json({ limit: "7mb" }));
 app.use((request, response, next) => {
   response.set({
     "X-Content-Type-Options": "nosniff",
