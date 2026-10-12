@@ -180,6 +180,12 @@ async function request(path, options) {
     }),
   });
 
+  const ciDepartment = await request("/api/operations/departments", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "CI Service Desk" }),
+  });
+  await request("/api/operations/slas/high", {
+    method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ response_hours: 2, resolution_hours: 12 }),
+  });
   await request("/api/auth/logout", { method: "POST" });
   cookie = "";
   await request("/api/auth/login", {
@@ -213,6 +219,7 @@ async function request(path, options) {
       requester_phone: "+20 100 000 0000",
       category: "Software",
       priority: "high",
+      department_id: ciDepartment.department.id,
       attachment: {
         file_name: "test.png",
         content_type: "image/png",
@@ -220,6 +227,14 @@ async function request(path, options) {
       },
     }),
   });
+
+  const deadlineHours = (deadline) => (new Date(deadline) - new Date(created.ticket.created_at)) / 3600000;
+  if (deadlineHours(created.ticket.response_due_at) !== 2 || deadlineHours(created.ticket.resolution_due_at) !== 12 || created.ticket.department_name !== "CI Service Desk") {
+    throw new Error("New ticket did not snapshot the configured SLA/department");
+  }
+  const staffDirectory = await request("/api/operations/staff");
+  const ciAgent = staffDirectory.staff.find((item) => item.display_name === "CI support agent");
+  if (!ciAgent) throw new Error("Assignable staff directory is incomplete");
 
   await request(`/api/tickets/${created.ticket.id}/status`, {
     method: "PATCH",
@@ -245,17 +260,21 @@ async function request(path, options) {
 
   const jsonHeaders = { "content-type": "application/json" };
   await request(`/api/tickets/${created.ticket.id}/assignment`, {
-    method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ assigned_to: "CI agent" }),
+    method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ assignee_id: ciAgent.id }),
   });
   await request(`/api/tickets/${created.ticket.id}/status`, {
     method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ status: "in_progress" }),
   });
   await request(`/api/tickets/${created.ticket.id}/comments`, {
-    method: "POST", headers: jsonHeaders, body: JSON.stringify({ body: "Please restart the device.", internal: false }),
-  });
-  await request(`/api/tickets/${created.ticket.id}/comments`, {
     method: "POST", headers: jsonHeaders, body: JSON.stringify({ body: "Private investigation note", internal: true }),
   });
+  const beforePublicReply = await request(`/api/tickets/${created.ticket.id}`);
+  if (beforePublicReply.ticket.first_response_at) throw new Error("Internal note incorrectly stopped the response timer");
+  await request(`/api/tickets/${created.ticket.id}/comments`, {
+    method: "POST", headers: jsonHeaders, body: JSON.stringify({ body: "Please restart the device.", internal: false }),
+  });
+  const afterPublicReply = await request(`/api/tickets/${created.ticket.id}`);
+  if (!afterPublicReply.ticket.first_response_at) throw new Error("Public reply did not stop the response timer");
   const staffThread = await request(`/api/tickets/${created.ticket.id}/conversation`);
   if (staffThread.comments.length !== 2 || !staffThread.comments.some((item) => item.internal)) {
     throw new Error("Staff conversation lost the internal note");
@@ -264,7 +283,7 @@ async function request(path, options) {
   if (statusEvents.length !== 1 || statusEvents[0].old_value !== "open" || statusEvents[0].new_value !== "in_progress" || statusEvents[0].actor_name !== "CI support agent") {
     throw new Error("Status audit did not preserve actor/before/after or recorded a no-op");
   }
-  if (!staffThread.events.some((item) => item.kind === "assignment_changed" && item.new_value === "CI agent")) {
+  if (!staffThread.events.some((item) => item.kind === "assignment_changed" && item.new_value === "CI support agent")) {
     throw new Error("Assignment audit is missing");
   }
 
@@ -303,6 +322,18 @@ async function request(path, options) {
   if (JSON.stringify(listedAgain).includes(created.tracking_token) || JSON.stringify(listedAgain).includes("tracking_token_hash")) {
     throw new Error("IT ticket list leaked tracking secrets");
   }
+  const report = await request("/api/operations/reports?days=30");
+  if (Number(report.period_summary.created) !== 2 || Number(report.current_summary.outstanding) !== 2 || !report.workload.some((row) => String(row.user_id) === String(ciAgent.id) && Number(row.outstanding) === 1)) {
+    throw new Error("Report totals or technician workload are incorrect");
+  }
+  const resolved = await request(`/api/tickets/${created.ticket.id}/status`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ status: "resolved" }) });
+  if (!resolved.ticket.resolved_at) throw new Error("Resolution timestamp was not recorded");
+  const resolvedReport = await request("/api/operations/reports");
+  if (Number(resolvedReport.period_summary.resolved) !== 1 || Number(resolvedReport.current_summary.outstanding) !== 1 || resolvedReport.period_summary.average_resolution_hours == null) {
+    throw new Error("Resolved report metrics are incorrect");
+  }
+  const agentPolicyEdit = await fetch(`${baseUrl}/api/operations/slas/high`, { method: "PATCH", headers: { ...jsonHeaders, cookie }, body: JSON.stringify({ response_hours: 1, resolution_hours: 2 }) });
+  if (agentPolicyEdit.status !== 403) throw new Error("Agent changed a service policy");
 
   console.log("Integration test passed");
 })().catch((error) => {
@@ -312,3 +343,32 @@ async function request(path, options) {
 '
 
 echo "Integration test passed; cleanup runs on exit."
+
+# Database fixtures exercise overdue work and reports beyond the queue page size.
+docker exec -i "$backend_name" node <<'JS'
+const pool = require("./db");
+(async () => {
+  const past = new Date(Date.now() - 3600000);
+  await pool.query("UPDATE tickets SET response_due_at = $1, resolution_due_at = $1 WHERE title = $2", [past, "Second CI ticket"]);
+  await pool.query(`INSERT INTO tickets(title, requester_name, requester_email, requester_phone)
+    SELECT 'Report volume ticket ' || n, 'Test employee', 'volume@example.com', '123456789'
+    FROM generate_series(1, 205) n`);
+  const login = await fetch("http://127.0.0.1:3000/api/auth/login", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "ci-agent", password: "ci-agent-password-changed-12345" }),
+  });
+  if (!login.ok) throw new Error("Report fixture login failed");
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const response = await fetch("http://127.0.0.1:3000/api/operations/reports", { headers: { cookie } });
+  if (!response.ok) throw new Error("Report fixture request failed");
+  const report = await response.json();
+  if (Number(report.period_summary.created) !== 207 || Number(report.current_summary.outstanding) !== 206 || Number(report.current_summary.response_overdue) !== 1 || Number(report.current_summary.resolution_overdue) !== 1) {
+    throw new Error("All-ticket report or overdue counts are incorrect");
+  }
+  const before = await pool.query("SELECT response_due_at, resolution_due_at FROM tickets WHERE title = $1", ["CI integration ticket"]);
+  await pool.query("UPDATE sla_policies SET response_hours = 1, resolution_hours = 3 WHERE priority = $1", ["high"]);
+  const after = await pool.query("SELECT response_due_at, resolution_due_at FROM tickets WHERE title = $1", ["CI integration ticket"]);
+  if (JSON.stringify(before.rows) !== JSON.stringify(after.rows)) throw new Error("Policy edit changed an existing SLA snapshot");
+  console.log("SLA overdue and all-ticket report integration passed");
+})().catch((error) => { console.error(error.message); process.exitCode = 1; }).finally(() => pool.end());
+JS

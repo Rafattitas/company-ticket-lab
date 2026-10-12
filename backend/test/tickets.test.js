@@ -52,7 +52,7 @@ test("creates a ticket with trimmed values and parameterized SQL", async () => {
   let queryValues;
   const pool = {
     async query(sql, values) {
-      assert.match(sql, /VALUES \(\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$12\)/);
+      assert.match(sql, /VALUES \(\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$12, \$13\)/);
       assert.match(sql, /INSERT INTO ticket_events/);
       queryValues = values;
       return {
@@ -210,6 +210,6 @@ test("updates ticket assignment with a parameterized query", async () => {
     });
 
     assert.equal(response.status, 200);
-    assert.deepEqual(capturedValues, ["Rafat", 9, "IT support", null]);
+    assert.deepEqual(capturedValues, ["Rafat", 9, "IT support", null, null]);
   });
 });
