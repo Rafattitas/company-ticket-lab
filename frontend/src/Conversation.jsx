@@ -38,7 +38,8 @@ function Timeline({ comments = [], events = [] }) {
       : <div className="activity-event" key={`event-${item.id}`}>
         <span>{item.kind === 'created' ? 'Ticket created'
           : item.kind === 'status_changed' ? `Status: ${statusNames[item.old_value] || item.old_value} → ${statusNames[item.new_value] || item.new_value}`
-            : `Assignee: ${item.old_value || 'Unassigned'} → ${item.new_value || 'Unassigned'}`}
+            : item.kind === 'department_changed' ? `Department: ${item.old_value || 'Unspecified'} → ${item.new_value}`
+              : `Assignee: ${item.old_value || 'Unassigned'} → ${item.new_value || 'Unassigned'}`}
           {item.actor_name && ` · ${item.actor_name}`}</span><time dateTime={item.created_at}>{date(item.created_at)}</time>
       </div>)}
     <p className="conversation-limit">Showing up to the latest 100 messages and 100 changes.</p>

@@ -1,6 +1,7 @@
 const express = require("express");
 const crypto = require("node:crypto");
 const { tokenHash } = require("./conversations");
+const { parseId } = require("./operations");
 
 const allowedStatuses = new Set(["open", "in_progress", "resolved", "closed"]);
 const allowedPriorities = new Set(["low", "normal", "high", "urgent"]);
@@ -9,7 +10,10 @@ const maximumAttachmentSize = 5 * 1024 * 1024;
 const ticketColumns = `
   id, title, description, status, priority, category,
   requester_name, requester_email, requester_phone,
-  assigned_to, created_at, updated_at
+  assigned_to, assigned_user_id, department_id,
+  (SELECT name FROM departments WHERE departments.id = tickets.department_id) AS department_name,
+  response_due_at, resolution_due_at, first_response_at, resolved_at,
+  created_at, updated_at
 `;
 
 function parseTicketId(value) {
@@ -195,6 +199,10 @@ function createTicketsRouter(pool, authentication = { requirePermission: () => (
     const category = cleanString(request.body.category, 80) || "general";
     const priority = cleanString(request.body.priority, 20) || "normal";
     const attachment = parseAttachment(request.body.attachment);
+    const departmentId = request.body.department_id == null || request.body.department_id === "" ? null : parseId(request.body.department_id);
+    if (request.body.department_id != null && request.body.department_id !== "" && !departmentId) {
+      return response.status(400).json({ error: "invalid_department" });
+    }
 
     if (title.length < 3 || title.length > 200) {
       return response.status(400).json({
@@ -235,13 +243,17 @@ function createTicketsRouter(pool, authentication = { requirePermission: () => (
     }
 
     try {
+      if (departmentId) {
+        const department = await pool.query("SELECT id FROM departments WHERE id = $1 AND active = TRUE", [departmentId]);
+        if (!department.rowCount) return response.status(400).json({ error: "invalid_department" });
+      }
       const trackingToken = crypto.randomBytes(32).toString("hex");
       const result = await pool.query(
         `WITH new_ticket AS (
            INSERT INTO tickets
              (title, description, requester_name, category, priority,
-              requester_email, requester_phone, tracking_token_hash)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $12)
+              requester_email, requester_phone, tracking_token_hash, department_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $12, $13)
            RETURNING ${ticketColumns}
          ), new_attachment AS (
            INSERT INTO ticket_attachments
@@ -271,6 +283,7 @@ function createTicketsRouter(pool, authentication = { requirePermission: () => (
           attachment?.data.length || null,
           attachment?.data || null,
           tokenHash(trackingToken),
+          departmentId,
         ],
       );
 
@@ -298,13 +311,14 @@ function createTicketsRouter(pool, authentication = { requirePermission: () => (
         `WITH previous AS MATERIALIZED (
            SELECT id, status FROM tickets WHERE id = $2 FOR UPDATE
          ), updated AS (
-           UPDATE tickets SET status = $1, updated_at = CURRENT_TIMESTAMP
+           UPDATE tickets SET status = $1::varchar(20), updated_at = CURRENT_TIMESTAMP,
+             resolved_at = CASE WHEN $1::varchar(20) IN ('resolved', 'closed') THEN COALESCE(resolved_at, CURRENT_TIMESTAMP) ELSE NULL END
            WHERE id = (SELECT id FROM previous) RETURNING ${ticketColumns}
          ), event AS (
            INSERT INTO ticket_events (ticket_id, kind, actor_name, actor_id, old_value, new_value)
-           SELECT previous.id, 'status_changed', $3, $4, previous.status, $1
+           SELECT previous.id, 'status_changed', $3, $4, previous.status, $1::text
            FROM previous JOIN updated ON updated.id = previous.id
-           WHERE previous.status IS DISTINCT FROM $1 RETURNING id
+           WHERE previous.status IS DISTINCT FROM $1::varchar(20) RETURNING id
          ) SELECT * FROM updated`,
         [status, id, request.user?.display_name || "IT support", request.user?.id || null],
       );
@@ -321,7 +335,9 @@ function createTicketsRouter(pool, authentication = { requirePermission: () => (
 
   router.patch("/:id/assignment", canUpdateTickets, async (request, response, next) => {
     const id = parseTicketId(request.params.id);
-    const assignedTo = cleanString(request.body.assigned_to, 120);
+    let assignedTo = cleanString(request.body.assigned_to, 120);
+    const assigneeId = request.body.assignee_id == null || request.body.assignee_id === "" ? null : parseId(request.body.assignee_id);
+    if (request.body.assignee_id != null && request.body.assignee_id !== "" && !assigneeId) return response.status(400).json({ error: "invalid_assignee" });
 
     if (!id) {
       return response.status(400).json({ error: "invalid_ticket_id" });
@@ -332,19 +348,24 @@ function createTicketsRouter(pool, authentication = { requirePermission: () => (
     }
 
     try {
+      if (assigneeId) {
+        const staff = await pool.query("SELECT id, display_name FROM user_accounts WHERE id = $1 AND active = TRUE AND role IN ('admin', 'agent')", [assigneeId]);
+        if (!staff.rowCount) return response.status(400).json({ error: "invalid_assignee" });
+        assignedTo = staff.rows[0].display_name;
+      }
       const result = await pool.query(
         `WITH previous AS MATERIALIZED (
-           SELECT id, assigned_to FROM tickets WHERE id = $2 FOR UPDATE
+           SELECT id, assigned_to, assigned_user_id FROM tickets WHERE id = $2 FOR UPDATE
          ), updated AS (
-           UPDATE tickets SET assigned_to = $1, updated_at = CURRENT_TIMESTAMP
+           UPDATE tickets SET assigned_to = $1, assigned_user_id = $5, updated_at = CURRENT_TIMESTAMP
            WHERE id = (SELECT id FROM previous) RETURNING ${ticketColumns}
          ), event AS (
            INSERT INTO ticket_events (ticket_id, kind, actor_name, actor_id, old_value, new_value)
            SELECT previous.id, 'assignment_changed', $3, $4, previous.assigned_to, $1
            FROM previous JOIN updated ON updated.id = previous.id
-           WHERE previous.assigned_to IS DISTINCT FROM $1 RETURNING id
+           WHERE previous.assigned_to IS DISTINCT FROM $1 OR previous.assigned_user_id IS DISTINCT FROM $5 RETURNING id
          ) SELECT * FROM updated`,
-        [assignedTo, id, request.user?.display_name || "IT support", request.user?.id || null],
+        [assignedTo, id, request.user?.display_name || "IT support", request.user?.id || null, assigneeId],
       );
 
       if (result.rowCount === 0) {
@@ -355,6 +376,28 @@ function createTicketsRouter(pool, authentication = { requirePermission: () => (
     } catch (error) {
       return next(error);
     }
+  });
+
+  router.patch("/:id/department", canUpdateTickets, async (request, response, next) => {
+    const id = parseTicketId(request.params.id);
+    const departmentId = parseId(request.body?.department_id);
+    if (!id || !departmentId) return response.status(400).json({ error: "invalid_department" });
+    try {
+      const department = await pool.query("SELECT id, name FROM departments WHERE id = $1 AND active = TRUE", [departmentId]);
+      if (!department.rowCount) return response.status(400).json({ error: "invalid_department" });
+      const result = await pool.query(`WITH previous AS MATERIALIZED (
+          SELECT id, department_id, (SELECT name FROM departments WHERE id = tickets.department_id) AS name FROM tickets WHERE id = $2 FOR UPDATE
+        ), updated AS (
+          UPDATE tickets SET department_id = $1, updated_at = CURRENT_TIMESTAMP
+          WHERE id = (SELECT id FROM previous) RETURNING ${ticketColumns}
+        ), event AS (
+          INSERT INTO ticket_events(ticket_id, kind, actor_name, actor_id, old_value, new_value)
+          SELECT previous.id, 'department_changed', $3, $4, previous.name, $5 FROM previous JOIN updated ON previous.id = updated.id
+          WHERE previous.department_id IS DISTINCT FROM $1 RETURNING id
+        ) SELECT * FROM updated`, [departmentId, id, request.user?.display_name || "IT support", request.user?.id || null, department.rows[0].name]);
+      if (!result.rowCount) return response.status(404).json({ error: "ticket_not_found" });
+      return response.json({ ticket: result.rows[0] });
+    } catch (error) { return next(error); }
   });
 
   return router;

@@ -23,6 +23,7 @@ behavior, read `docs/accounts-and-permissions.md`.
 | `backend/server.js` | Startup, migration/bootstrap sequence, health checks, error handling, shutdown |
 | `backend/routes/tickets.js` | Ticket validation, parameterized queries, attachments, permission checks |
 | `backend/routes/conversations.js` | Private tracking access, public replies, internal notes, activity reads |
+| `backend/routes/operations.js`, `frontend/src/Operations.jsx` | Department/SLA administration, reports, and service indicators |
 | `backend/auth.js` | Password hashing, sessions, authorization, account routes, bootstrap admin |
 | `backend/db.js` | PostgreSQL connection and password-file support |
 | `backend/migrate.js`, `migrations/` | Ordered migrations and `schema_migrations` ledger |
@@ -57,6 +58,12 @@ behavior, read `docs/accounts-and-permissions.md`.
   do not describe it as proof of employee identity.
 - Record status/assignment changes atomically with their before/after values
   and server-authenticated actor. Do not log a change when the value is unchanged.
+- SLA deadlines are snapshots on ticket creation, in elapsed hours. Only a public
+  staff reply sets first response; internal notes do not. Reopening clears the
+  resolution timestamp but keeps original deadlines. Do not invent legacy timing.
+- Report period metrics use creation time, while workload/overdue totals span all
+  outstanding tickets. Aggregate in PostgreSQL, never over the 200-ticket UI page.
+  See `docs/service-management.md` before changing these definitions.
 - Add a new numbered SQL migration for schema changes. Do not rewrite migrations
   already applied to a persistent database. Check backward compatibility:
   rolling back an image does not roll back the database schema.

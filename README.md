@@ -27,6 +27,8 @@ login, password-change rules, and the role matrix.
 - Employee portal for submitting contact details, issue level, description, and an optional screenshot.
 - Private follow-up links for new tickets, with employee/IT replies and status updates.
 - IT-only internal notes and a status/assignment activity log with before/after values.
+- Department routing, account-linked technicians, configurable priority response/resolution targets, and overdue indicators.
+- Reports for request volume, response/resolution times, departments, and technician workload.
 - Responsive IT dashboard with queue totals and urgent-work visibility.
 - Ticket requester, email, phone, category, priority, assignee, and status tracking.
 - JPG, PNG, and WebP attachments up to 5 MB, stored with the database backup.
@@ -111,13 +113,16 @@ company-ticket-lab/
 │   │   ├── 003_requester_contact_and_attachments.sql
 │   │   ├── 004_admin_accounts_and_sessions.sql
 │   │   ├── 005_require_password_change.sql
-│   │   └── 006_ticket_conversations.sql
+│   │   ├── 006_ticket_conversations.sql
+│   │   └── 007_departments_and_sla.sql
 │   ├── routes/
 │   │   ├── conversations.js
+│   │   ├── operations.js
 │   │   └── tickets.js
 │   ├── test/
 │   │   ├── auth.test.js
 │   │   ├── conversations.test.js
+│   │   ├── operations.test.js
 │   │   └── tickets.test.js
 │   ├── Dockerfile
 │   ├── auth.js
@@ -142,6 +147,7 @@ company-ticket-lab/
 │   ├── deployment.md
 │   ├── operations-runbook.md
 │   ├── security-scanning.md
+│   ├── service-management.md
 │   └── ticket-conversations.md
 ├── frontend/
 │   ├── public/
@@ -268,6 +274,7 @@ and distinguishes repository deployment code from the installed VM command.
 |---|---|
 | [Accounts and permissions](docs/accounts-and-permissions.md) | Initial admin login, password changes, and IT roles |
 | [Ticket conversations](docs/ticket-conversations.md) | Private tracking links, replies, internal notes, and change history |
+| [Service management](docs/service-management.md) | Departments, technicians, SLA timing rules, and report definitions |
 | [Architecture](docs/architecture.md) | Services, request flow, networks, and persistent data |
 | [Deployment](docs/deployment.md) | CI/CD, GHCR releases, host setup, and deployment-script installation |
 | [Operations runbook](docs/operations-runbook.md) | Checks, logs, backups, and troubleshooting |
@@ -282,7 +289,7 @@ and distinguishes repository deployment code from the installed VM command.
 - The lab uses one VM and one self-hosted deployment runner.
 - The current LAN deployment uses HTTP. HTTPS and Secure session cookies need
   deployment-specific configuration before external exposure.
-- Email notifications and service-level agreements are planned for later releases.
+- Email notifications, business-hours calendars, and automatic SLA escalations are planned for later releases.
 - Tracking links are bearer secrets with no expiry/recovery flow yet. History
   returns the latest 100 comments and 100 events; pagination is not included.
 - Image tags include the Git commit SHA for traceability but remain registry tags; digest-based deployment would provide stronger immutability.
