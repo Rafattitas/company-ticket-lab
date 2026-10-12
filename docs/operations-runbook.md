@@ -19,7 +19,7 @@ All three services should report `healthy`.
 ```bash
 source /etc/company-ticket/host.env
 curl -fsS "http://${FRONTEND_BIND_ADDRESS}:8080/"
-curl -fsS "http://${FRONTEND_BIND_ADDRESS}:8080/api/tickets"
+curl -fsS "http://${FRONTEND_BIND_ADDRESS}:8080/admin" > /dev/null
 ```
 
 The first command verifies Nginx and the compiled frontend. The second verifies the reverse proxy, backend, database connection, and ticket query.
