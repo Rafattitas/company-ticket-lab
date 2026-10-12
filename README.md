@@ -173,12 +173,15 @@ contain a base64-encoded JPG, PNG, or WebP image up to 5 MB.
 
 Listing, reading, and changing tickets requires an authenticated IT account.
 Admins manage accounts, Agents read and update tickets, and Viewers have
-read-only access. Before the first production deployment, configure the initial
-administrator password on the VM:
+read-only access. The first production deployment generates a random initial
+administrator password without printing it in GitHub logs. Read it on the VM:
 
 ```bash
-sudo bash deploy/configure-admin-password.sh
+sudo cat /etc/company-ticket/secrets/ticketdesk_admin_password
 ```
+
+The username is `admin`. To choose the initial password yourself, run
+`sudo bash deploy/configure-admin-password.sh` before the first deployment.
 
 ## CI/CD pipeline
 

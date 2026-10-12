@@ -21,6 +21,7 @@ host_env="/etc/company-ticket/host.env"
 backup_dir="/var/backups/company-ticket"
 backup_retention_count=10
 lock_file="/run/lock/company-ticket-deploy.lock"
+admin_password_file="/etc/company-ticket/secrets/ticketdesk_admin_password"
 
 # Serialize deployments so two workflow runs cannot modify Compose state or the
 # active image reference file at the same time.
@@ -30,10 +31,28 @@ if ! flock -n 9; then
   exit 1
 fi
 
+# Existing installations do not have an administrator secret yet. Generate it
+# once without printing it to CI logs; operators can read it locally with sudo.
+if [ ! -f "$admin_password_file" ]; then
+  echo "Generating the initial TicketDesk administrator password..."
+  if ! command -v openssl > /dev/null 2>&1; then
+    echo "openssl is required to generate the initial administrator password." >&2
+    exit 1
+  fi
+  install -d -m 0750 -o root -g 987 /etc/company-ticket/secrets
+  temporary_admin_password="$(mktemp /etc/company-ticket/secrets/ticketdesk_admin_password.XXXXXX)"
+  openssl rand -hex 24 > "$temporary_admin_password"
+  chown root:987 "$temporary_admin_password"
+  chmod 0640 "$temporary_admin_password"
+  mv -f "$temporary_admin_password" "$admin_password_file"
+  echo "Initial administrator username: admin"
+  echo "Read the password locally with: sudo cat $admin_password_file"
+fi
+
 for required_file in \
   /etc/company-ticket/secrets/postgres_password \
   /etc/company-ticket/secrets/postgres_app_password \
-  /etc/company-ticket/secrets/ticketdesk_admin_password \
+  "$admin_password_file" \
   "$host_env" \
   "$image_env"
 do
