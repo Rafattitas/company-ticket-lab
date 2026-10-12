@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE user_accounts
+  ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT TRUE;
+
+COMMIT;

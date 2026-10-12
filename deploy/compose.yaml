@@ -55,10 +55,9 @@ services:
       DB_USER: ticket_app
       DB_PASSWORD_FILE: /run/secrets/postgres_app_password
       ADMIN_USERNAME: admin
-      ADMIN_PASSWORD_FILE: /run/secrets/ticketdesk_admin_password
+      ADMIN_PASSWORD: admin
     secrets:
       - postgres_app_password
-      - ticketdesk_admin_password
     networks:
       - internal
     expose:
@@ -111,9 +110,6 @@ secrets:
 
   postgres_app_password:
     file: /etc/company-ticket/secrets/postgres_app_password
-
-  ticketdesk_admin_password:
-    file: /etc/company-ticket/secrets/ticketdesk_admin_password
 
 volumes:
   # Provisioned once on the host and intentionally kept outside Compose cleanup.

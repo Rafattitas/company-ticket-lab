@@ -1,4 +1,3 @@
-const fs = require("node:fs");
 const crypto = require("node:crypto");
 const express = require("express");
 const { promisify } = require("node:util");
@@ -63,13 +62,10 @@ async function ensureBootstrapAdmin(pool) {
   if (existing.rowCount > 0) return;
 
   const username = normalizeUsername(process.env.ADMIN_USERNAME || "admin");
-  const passwordFile = process.env.ADMIN_PASSWORD_FILE;
-  const password = passwordFile
-    ? fs.readFileSync(passwordFile, "utf8").trim()
-    : String(process.env.ADMIN_PASSWORD || "");
+  const password = String(process.env.ADMIN_PASSWORD || "admin");
 
-  if (!validUsername(username) || password.length < 12) {
-    throw new Error("Initial admin username is invalid or password is shorter than 12 characters");
+  if (!validUsername(username) || password.length < 1 || password.length > 256) {
+    throw new Error("Initial administrator credentials are invalid");
   }
 
   await pool.query(
@@ -87,7 +83,8 @@ function createAuthentication(pool) {
     if (!token || token.length !== 64) return null;
 
     const result = await pool.query(
-      `SELECT users.id, users.username, users.display_name, users.role
+      `SELECT users.id, users.username, users.display_name, users.role,
+              users.must_change_password
        FROM auth_sessions sessions
        JOIN user_accounts users ON users.id = sessions.user_id
        WHERE sessions.token_hash = $1
@@ -97,7 +94,19 @@ function createAuthentication(pool) {
     );
     if (result.rowCount === 0) return null;
     const user = result.rows[0];
-    return { ...user, permissions: rolePermissions[user.role] || [] };
+    return {
+      ...user,
+      permissions: user.must_change_password ? [] : rolePermissions[user.role] || [],
+    };
+  }
+
+  function requireAuthenticated(request, response, next) {
+    currentUser(request).then((user) => {
+      if (!user) return response.status(401).json({ error: "authentication_required" });
+      request.user = user;
+      request.sessionTokenHash = hashToken(readCookies(request)[sessionCookie]);
+      return next();
+    }).catch(next);
   }
 
   function requirePermission(permission) {
@@ -105,6 +114,7 @@ function createAuthentication(pool) {
       try {
         const user = await currentUser(request);
         if (!user) return response.status(401).json({ error: "authentication_required" });
+        if (user.must_change_password) return response.status(403).json({ error: "password_change_required" });
         if (!user.permissions.includes(permission)) return response.status(403).json({ error: "permission_denied" });
         request.user = user;
         return next();
@@ -119,7 +129,7 @@ function createAuthentication(pool) {
     const password = typeof request.body.password === "string" ? request.body.password.slice(0, 256) : "";
     try {
       const result = await pool.query(
-        `SELECT id, username, display_name, role, password_hash
+        `SELECT id, username, display_name, role, password_hash, must_change_password
          FROM user_accounts WHERE username = $1 AND active = TRUE`,
         [username],
       );
@@ -137,7 +147,14 @@ function createAuthentication(pool) {
         [account.id, hashToken(token), sessionHours],
       );
       response.set("Set-Cookie", cookieOptions(sessionHours * 60 * 60).replace(`${sessionCookie}=`, `${sessionCookie}=${token}`));
-      return response.json({ user: { id: account.id, username: account.username, display_name: account.display_name, role: account.role, permissions: rolePermissions[account.role] } });
+      return response.json({ user: {
+        id: account.id,
+        username: account.username,
+        display_name: account.display_name,
+        role: account.role,
+        must_change_password: account.must_change_password,
+        permissions: account.must_change_password ? [] : rolePermissions[account.role],
+      } });
     } catch (error) { return next(error); }
   });
 
@@ -150,11 +167,39 @@ function createAuthentication(pool) {
     } catch (error) { return next(error); }
   });
 
-  router.get("/me", requirePermission("tickets:read"), (request, response) => response.json({ user: request.user }));
+  router.get("/me", requireAuthenticated, (request, response) => response.json({ user: request.user }));
+
+  router.post("/change-password", requireAuthenticated, async (request, response, next) => {
+    const currentPassword = typeof request.body.current_password === "string" ? request.body.current_password.slice(0, 256) : "";
+    const newPassword = typeof request.body.new_password === "string" ? request.body.new_password.slice(0, 256) : "";
+    if (newPassword.length < 12) return response.status(400).json({ error: "password_too_short" });
+    if (newPassword === currentPassword) return response.status(400).json({ error: "password_must_change" });
+    try {
+      const result = await pool.query("SELECT password_hash FROM user_accounts WHERE id = $1 AND active = TRUE", [request.user.id]);
+      if (result.rowCount === 0 || !await verifyPassword(currentPassword, result.rows[0].password_hash)) {
+        return response.status(400).json({ error: "current_password_incorrect" });
+      }
+      await pool.query(
+        `UPDATE user_accounts
+         SET password_hash = $1, must_change_password = FALSE, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2`,
+        [await hashPassword(newPassword), request.user.id],
+      );
+      await pool.query(
+        "DELETE FROM auth_sessions WHERE user_id = $1 AND token_hash <> $2",
+        [request.user.id, request.sessionTokenHash],
+      );
+      return response.json({ user: {
+        ...request.user,
+        must_change_password: false,
+        permissions: rolePermissions[request.user.role] || [],
+      } });
+    } catch (error) { return next(error); }
+  });
 
   router.get("/accounts", requirePermission("accounts:manage"), async (request, response, next) => {
     try {
-      const result = await pool.query("SELECT id, username, display_name, role, active, created_at FROM user_accounts ORDER BY username");
+      const result = await pool.query("SELECT id, username, display_name, role, active, must_change_password, created_at FROM user_accounts ORDER BY username");
       return response.json({ accounts: result.rows });
     } catch (error) { return next(error); }
   });
@@ -172,7 +217,7 @@ function createAuthentication(pool) {
       const result = await pool.query(
         `INSERT INTO user_accounts (username, display_name, password_hash, role)
          VALUES ($1, $2, $3, $4)
-         RETURNING id, username, display_name, role, active, created_at`,
+         RETURNING id, username, display_name, role, active, must_change_password, created_at`,
         [username, displayName, await hashPassword(password), role],
       );
       return response.status(201).json({ account: result.rows[0] });
@@ -209,9 +254,10 @@ function createAuthentication(pool) {
            role = COALESCE(NULLIF($2, ''), role),
            active = COALESCE($3::boolean, active),
            password_hash = COALESCE($4, password_hash),
+           must_change_password = CASE WHEN $4 IS NULL THEN must_change_password ELSE TRUE END,
            updated_at = CURRENT_TIMESTAMP
          WHERE id = $5
-         RETURNING id, username, display_name, role, active, created_at`,
+         RETURNING id, username, display_name, role, active, must_change_password, created_at`,
         [displayName, role, typeof active === "boolean" ? active : null, passwordHash, id],
       );
       if (result.rowCount === 0) return response.status(404).json({ error: "account_not_found" });
@@ -220,7 +266,7 @@ function createAuthentication(pool) {
     } catch (error) { return next(error); }
   });
 
-  return { router, requirePermission };
+  return { router, requirePermission, requireAuthenticated };
 }
 
 module.exports = { createAuthentication, ensureBootstrapAdmin, hashPassword, verifyPassword };

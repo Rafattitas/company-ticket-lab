@@ -155,6 +155,20 @@ async function request(path, options) {
     body: JSON.stringify({ username: "ci-admin", password: "ci-admin-password-12345" }),
   });
 
+  const blockedBeforePasswordChange = await fetch(`${baseUrl}/api/tickets`, { headers: { cookie } });
+  if (blockedBeforePasswordChange.status !== 403) {
+    throw new Error("Temporary password unexpectedly received ticket access");
+  }
+
+  await request("/api/auth/change-password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      current_password: "ci-admin-password-12345",
+      new_password: "ci-admin-password-changed-12345",
+    }),
+  });
+
   await request("/api/auth/accounts", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -172,6 +186,15 @@ async function request(path, options) {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ username: "ci-agent", password: "ci-agent-password-12345" }),
+  });
+
+  await request("/api/auth/change-password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      current_password: "ci-agent-password-12345",
+      new_password: "ci-agent-password-changed-12345",
+    }),
   });
 
   const forbiddenAccounts = await fetch(`${baseUrl}/api/auth/accounts`, { headers: { cookie } });

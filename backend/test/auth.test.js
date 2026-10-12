@@ -45,3 +45,46 @@ test("prevents a viewer from managing accounts", async () => {
     assert.deepEqual(await response.json(), { error: "permission_denied" });
   });
 });
+
+test("blocks dashboard permissions until a temporary password is changed", async () => {
+  const pool = {
+    async query(sql) {
+      assert.match(sql, /FROM auth_sessions/);
+      return { rowCount: 1, rows: [{ id: "1", username: "admin", display_name: "Administrator", role: "admin", must_change_password: true }] };
+    },
+  };
+  await withAuthApi(pool, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/auth/accounts`, {
+      headers: { cookie: `ticketdesk_session=${"b".repeat(64)}` },
+    });
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), { error: "password_change_required" });
+  });
+});
+
+test("changes a temporary password and restores role permissions", async () => {
+  const oldHash = await hashPassword("admin");
+  const calls = [];
+  const pool = {
+    async query(sql, values) {
+      calls.push({ sql, values });
+      if (/FROM auth_sessions/.test(sql)) {
+        return { rowCount: 1, rows: [{ id: "1", username: "admin", display_name: "Administrator", role: "admin", must_change_password: true }] };
+      }
+      if (/SELECT password_hash/.test(sql)) return { rowCount: 1, rows: [{ password_hash: oldHash }] };
+      return { rowCount: 1, rows: [] };
+    },
+  };
+  await withAuthApi(pool, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/auth/change-password`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: `ticketdesk_session=${"c".repeat(64)}` },
+      body: JSON.stringify({ current_password: "admin", new_password: "a-new-secure-password" }),
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.user.must_change_password, false);
+    assert.deepEqual(body.user.permissions, ["tickets:read", "tickets:update", "accounts:manage"]);
+    assert.match(calls[2].sql, /must_change_password = FALSE/);
+  });
+});

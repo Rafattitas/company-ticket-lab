@@ -36,8 +36,9 @@ Open [http://localhost:8080](http://localhost:8080) for the employee portal and
 [http://localhost:8080/admin](http://localhost:8080/admin) for the IT dashboard.
 The first startup creates the database schema automatically.
 
-The first local administrator uses `ADMIN_USERNAME` and `ADMIN_PASSWORD` from
-your `.env` file. Change both example passwords before starting the stack.
+Sign in to the IT dashboard the first time with username `admin` and password
+`admin`. TicketDesk immediately requires a new password of at least 12
+characters before it grants access to tickets or account management.
 
 Check the services:
 
@@ -92,7 +93,8 @@ company-ticket-lab/
 │   │   ├── 001_create_tickets.sql
 │   │   ├── 002_ticket_workflow_fields.sql
 │   │   ├── 003_requester_contact_and_attachments.sql
-│   │   └── 004_admin_accounts_and_sessions.sql
+│   │   ├── 004_admin_accounts_and_sessions.sql
+│   │   └── 005_require_password_change.sql
 │   ├── routes/
 │   │   └── tickets.js
 │   ├── test/
@@ -105,7 +107,6 @@ company-ticket-lab/
 │   ├── postgres/
 │   │   └── Dockerfile
 │   ├── compose.yaml
-│   ├── configure-admin-password.sh
 │   ├── configure-readonly-user.sh
 │   ├── host.env.example
 │   ├── images.env.example
@@ -161,6 +162,7 @@ Generated directories such as `node_modules/` and `frontend/dist/` are intention
 | `PATCH` | `/api/tickets/:id/assignment` | Assign or unassign a ticket |
 | `POST` | `/api/auth/login` | Start an IT session |
 | `POST` | `/api/auth/logout` | End the session |
+| `POST` | `/api/auth/change-password` | Replace a temporary password |
 | `GET` | `/api/auth/me` | Read the signed-in account |
 | `GET/POST/PATCH` | `/api/auth/accounts` | Admin account management |
 
@@ -173,15 +175,10 @@ contain a base64-encoded JPG, PNG, or WebP image up to 5 MB.
 
 Listing, reading, and changing tickets requires an authenticated IT account.
 Admins manage accounts, Agents read and update tickets, and Viewers have
-read-only access. The first production deployment generates a random initial
-administrator password without printing it in GitHub logs. Read it on the VM:
-
-```bash
-sudo cat /etc/company-ticket/secrets/ticketdesk_admin_password
-```
-
-The username is `admin`. To choose the initial password yourself, run
-`sudo bash deploy/configure-admin-password.sh` before the first deployment.
+read-only access. The initial production credentials are `admin` / `admin`.
+The account cannot use the dashboard until that temporary password is changed.
+New team accounts and administrator password resets follow the same forced
+password-change flow.
 
 ## CI/CD pipeline
 

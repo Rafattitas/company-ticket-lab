@@ -22,6 +22,9 @@ function friendlyError(code) {
     invalid_username: 'Use at least 3 lowercase letters, numbers, dots, dashes, or underscores.',
     invalid_display_name: 'Enter the team member name.',
     password_too_short: 'Passwords must contain at least 12 characters.',
+    password_must_change: 'Choose a password different from the temporary password.',
+    current_password_incorrect: 'The current password is incorrect.',
+    password_change_required: 'Change your temporary password before using the dashboard.',
     username_already_exists: 'That username already exists.',
     last_admin_required: 'At least one active administrator must remain.',
   }
@@ -136,6 +139,29 @@ function AdminLogin({ onLogin }) {
   return <div className="login-page"><div className="login-card"><Brand admin /><p className="eyebrow">Protected workspace</p><h1>Sign in to IT</h1><p>Use your TicketDesk team account to manage support requests.</p>{error && <div role="alert" className="alert"><span>{error}</span></div>}<form onSubmit={login}><label>Username<input autoComplete="username" required value={credentials.username} onChange={(e) => setCredentials((value) => ({ ...value, username: e.target.value }))} /></label><label>Password<input type="password" autoComplete="current-password" required value={credentials.password} onChange={(e) => setCredentials((value) => ({ ...value, password: e.target.value }))} /></label><button className="primary-button" disabled={saving}>{saving ? 'Signing in…' : 'Sign in'}</button></form><a href="/">← Return to employee portal</a></div></div>
 }
 
+function ChangePassword({ user, onChanged, onLogout }) {
+  const [passwords, setPasswords] = useState({ current_password: '', new_password: '', confirm_password: '' })
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function submit(event) {
+    event.preventDefault(); setError('')
+    if (passwords.new_password !== passwords.confirm_password) {
+      setError('The new passwords do not match.'); return
+    }
+    setSaving(true)
+    try {
+      const data = await apiRequest('/api/auth/change-password', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ current_password: passwords.current_password, new_password: passwords.new_password }),
+      })
+      onChanged(data.user)
+    } catch (cause) { setError(cause.message) } finally { setSaving(false) }
+  }
+
+  return <div className="login-page"><div className="login-card"><Brand admin /><p className="eyebrow">First sign-in</p><h1>Create a new password</h1><p>Welcome, {user.display_name}. Replace your temporary password before opening the IT workspace.</p>{error && <div role="alert" className="alert"><span>{error}</span></div>}<form onSubmit={submit}><label>Temporary password<input type="password" autoComplete="current-password" required value={passwords.current_password} onChange={(e) => setPasswords((value) => ({ ...value, current_password: e.target.value }))} /></label><label>New password<input type="password" autoComplete="new-password" required minLength={12} value={passwords.new_password} onChange={(e) => setPasswords((value) => ({ ...value, new_password: e.target.value }))} /><small>Use at least 12 characters.</small></label><label>Confirm new password<input type="password" autoComplete="new-password" required minLength={12} value={passwords.confirm_password} onChange={(e) => setPasswords((value) => ({ ...value, confirm_password: e.target.value }))} /></label><button className="primary-button" disabled={saving}>{saving ? 'Saving…' : 'Change password and continue'}</button></form><button className="secondary-button full-width-button" type="button" onClick={onLogout}>Sign out</button></div></div>
+}
+
 function AdminDashboard() {
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
@@ -154,7 +180,7 @@ function AdminDashboard() {
   }, [])
 
   useEffect(() => {
-    if (!user) return undefined
+    if (!user || user.must_change_password) return undefined
     const controller = new AbortController()
     // oxlint-disable-next-line react/set-state-in-effect
     apiRequest('/api/tickets', { signal: controller.signal }).then((data) => setTickets(data.tickets)).catch((cause) => { if (cause.name !== 'AbortError') setError(cause.message) }).finally(() => setLoading(false))
@@ -213,6 +239,7 @@ function AdminDashboard() {
 
   if (authLoading) return <div className="login-page"><div className="login-card">Checking your session…</div></div>
   if (!user) return <AdminLogin onLogin={setUser} />
+  if (user.must_change_password) return <ChangePassword user={user} onChanged={setUser} onLogout={logout} />
   const canUpdate = user.permissions.includes('tickets:update')
   const canManageAccounts = user.permissions.includes('accounts:manage')
 
