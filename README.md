@@ -4,14 +4,16 @@
 
 A self-hosted support-ticket system with a React dashboard, Express API, PostgreSQL storage, Docker quick start, and a production CI/CD reference implementation.
 
-TicketDesk lets a small support or IT team record requests, set priorities and categories, assign owners, search the queue, and move work through a clear status workflow.
+TicketDesk gives employees a simple request portal and gives IT a separate operational dashboard for triage, assignment, and resolution.
 
 > This is a training environment. It demonstrates production practices, but it is not an approved production platform.
 
 ## Features
 
-- Responsive ticket dashboard with queue totals and urgent-work visibility.
-- Ticket requester, category, priority, assignee, and status tracking.
+- Employee portal for submitting contact details, issue level, description, and an optional screenshot.
+- Responsive IT dashboard with queue totals and urgent-work visibility.
+- Ticket requester, email, phone, category, priority, assignee, and status tracking.
+- JPG, PNG, and WebP attachments up to 5 MB, stored with the database backup.
 - Search and filtering by status and priority.
 - Automatic, idempotent PostgreSQL schema migrations.
 - One-command local startup with Docker Compose.
@@ -29,7 +31,9 @@ cp .env.example .env
 docker compose --env-file .env -f compose.quickstart.yaml up --build -d
 ```
 
-Open [http://localhost:8080](http://localhost:8080). The first startup creates the database schema automatically.
+Open [http://localhost:8080](http://localhost:8080) for the employee portal and
+[http://localhost:8080/admin](http://localhost:8080/admin) for the IT dashboard.
+The first startup creates the database schema automatically.
 
 Check the services:
 
@@ -82,7 +86,8 @@ company-ticket-lab/
 ├── backend/
 │   ├── migrations/
 │   │   ├── 001_create_tickets.sql
-│   │   └── 002_ticket_workflow_fields.sql
+│   │   ├── 002_ticket_workflow_fields.sql
+│   │   └── 003_requester_contact_and_attachments.sql
 │   ├── routes/
 │   │   └── tickets.js
 │   ├── test/
@@ -144,12 +149,17 @@ Generated directories such as `node_modules/` and `frontend/dist/` are intention
 | `GET` | `/health/ready` | Backend and database readiness |
 | `GET` | `/api/tickets` | List the latest tickets |
 | `GET` | `/api/tickets/:id` | Read one ticket |
+| `GET` | `/api/tickets/:id/attachment` | Read the ticket image |
 | `POST` | `/api/tickets` | Create a ticket |
 | `PATCH` | `/api/tickets/:id/status` | Update a ticket status |
 | `PATCH` | `/api/tickets/:id/assignment` | Assign or unassign a ticket |
 
 Allowed ticket states are `open`, `in_progress`, `resolved`, and `closed`.
 Allowed priorities are `low`, `normal`, `high`, and `urgent`. The list endpoint accepts optional `search`, `status`, and `priority` query parameters.
+
+The create endpoint requires `requester_name`, `requester_email`,
+`requester_phone`, `title`, and `priority`. An optional `attachment` object may
+contain a base64-encoded JPG, PNG, or WebP image up to 5 MB.
 
 ## CI/CD pipeline
 
@@ -205,8 +215,8 @@ Changes are made on short-lived branches and merged through pull requests after 
 
 - Backups are stored locally on the VM; loss of the VM or its disk can remove both live data and backups.
 - The lab uses one VM and one self-hosted deployment runner.
-- The ticket UI has no user authentication; every device that can reach the LAN endpoint can view and change tickets.
-- Ticket history, file attachments, email notifications, and service-level agreements are planned for later releases.
+- The IT dashboard does not yet have authentication; keep the deployment on a trusted LAN until administrator login is implemented.
+- Ticket history, email notifications, and service-level agreements are planned for later releases.
 - Image tags include the Git commit SHA for traceability but remain registry tags; digest-based deployment would provide stronger immutability.
 - The documented PostgreSQL `gosu` finding still requires a separate reachability review.
 

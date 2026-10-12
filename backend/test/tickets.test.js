@@ -5,7 +5,7 @@ const createTicketsRouter = require("../routes/tickets");
 
 async function withApi(pool, run) {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: "7mb" }));
   app.use("/api/tickets", createTicketsRouter(pool));
 
   const server = app.listen(0, "127.0.0.1");
@@ -51,7 +51,7 @@ test("creates a ticket with trimmed values and parameterized SQL", async () => {
   let queryValues;
   const pool = {
     async query(sql, values) {
-      assert.match(sql, /VALUES \(\$1, \$2, \$3, \$4, \$5\)/);
+      assert.match(sql, /VALUES \(\$1, \$2, \$3, \$4, \$5, \$6, \$7\)/);
       queryValues = values;
       return {
         rows: [{ id: "7", title: "VPN issue", description: "Needs access", status: "open" }],
@@ -69,6 +69,8 @@ test("creates a ticket with trimmed values and parameterized SQL", async () => {
         requester_name: "  Salma  ",
         category: "  Network  ",
         priority: "high",
+        requester_email: "  SALMA@example.com  ",
+        requester_phone: " +20 100 123 4567 ",
       }),
     });
 
@@ -80,6 +82,12 @@ test("creates a ticket with trimmed values and parameterized SQL", async () => {
       "Salma",
       "Network",
       "high",
+      "salma@example.com",
+      "+20 100 123 4567",
+      null,
+      null,
+      null,
+      null,
     ]);
   });
 });
@@ -96,6 +104,59 @@ test("requires a requester name when creating a ticket", async () => {
     assert.deepEqual(await response.json(), {
       error: "requester_name_must_be_between_2_and_120_characters",
     });
+  });
+});
+
+test("rejects invalid requester contact details before querying", async () => {
+  await withApi(databaseMustNotBeCalled, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/tickets`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Printer issue",
+        requester_name: "Salma",
+        requester_email: "not-an-email",
+        requester_phone: "1234567",
+      }),
+    });
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: "invalid_requester_email" });
+  });
+});
+
+test("stores an allowed image attachment as binary data", async () => {
+  let queryValues;
+  const pool = {
+    async query(sql, values) {
+      assert.match(sql, /INSERT INTO ticket_attachments/);
+      queryValues = values;
+      return { rows: [{ id: "11", has_attachment: true }] };
+    },
+  };
+
+  await withApi(pool, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/tickets`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Broken screen",
+        requester_name: "Rafat",
+        requester_email: "rafat@example.com",
+        requester_phone: "+20 100 765 4321",
+        attachment: {
+          file_name: "screen.png",
+          content_type: "image/png",
+          data: Buffer.from("fake-png").toString("base64"),
+        },
+      }),
+    });
+
+    assert.equal(response.status, 201);
+    assert.equal(queryValues[7], "screen.png");
+    assert.equal(queryValues[8], "image/png");
+    assert.equal(queryValues[9], 8);
+    assert.deepEqual(queryValues[10], Buffer.from("fake-png"));
   });
 });
 
