@@ -17,6 +17,10 @@ backend_name="company-ticket-ci-backend-${suffix}"
 secret_dir="$(mktemp -d)"
 
 cleanup() {
+  local result=$?
+  if [ "$result" -ne 0 ]; then
+    docker logs --tail 40 "$backend_name" 2>/dev/null || true
+  fi
   docker rm -f "$backend_name" "$postgres_name" >/dev/null 2>&1 || true
   docker volume rm "$volume_name" >/dev/null 2>&1 || true
   docker network rm "$network_name" >/dev/null 2>&1 || true
@@ -142,7 +146,7 @@ async function request(path, options) {
   const body = response.status === 204 ? null : await response.json();
 
   if (!response.ok) {
-    throw new Error(`${response.status}: ${JSON.stringify(body)}`);
+    throw new Error(`${requestOptions.method || "GET"} ${path}: ${response.status}: ${JSON.stringify(body)}`);
   }
 
   return body;
