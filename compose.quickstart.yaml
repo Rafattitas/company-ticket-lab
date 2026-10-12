@@ -33,6 +33,8 @@ services:
       DB_NAME: ticket_db
       DB_USER: ticket_app
       DB_PASSWORD: ${POSTGRES_PASSWORD:-ticketdesk-local-password}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-this-admin-password}
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m

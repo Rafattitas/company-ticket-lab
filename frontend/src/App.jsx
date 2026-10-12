@@ -16,6 +16,14 @@ function friendlyError(code) {
     invalid_ticket_priority: 'Choose a valid priority.',
     invalid_attachment: 'Choose a JPG, PNG, or WebP image.',
     attachment_must_not_exceed_5mb: 'The image must be 5 MB or smaller.',
+    invalid_credentials: 'The username or password is incorrect.',
+    authentication_required: 'Sign in to open the IT dashboard.',
+    permission_denied: 'Your account does not have permission for this action.',
+    invalid_username: 'Use at least 3 lowercase letters, numbers, dots, dashes, or underscores.',
+    invalid_display_name: 'Enter the team member name.',
+    password_too_short: 'Passwords must contain at least 12 characters.',
+    username_already_exists: 'That username already exists.',
+    last_admin_required: 'At least one active administrator must remain.',
   }
   return messages[code] || 'Something went wrong. Please try again.'
 }
@@ -110,20 +118,48 @@ function UserPortal() {
   )
 }
 
+function AdminLogin({ onLogin }) {
+  const [credentials, setCredentials] = useState({ username: '', password: '' })
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function login(event) {
+    event.preventDefault(); setError(''); setSaving(true)
+    try {
+      const data = await apiRequest('/api/auth/login', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(credentials),
+      })
+      onLogin(data.user)
+    } catch (cause) { setError(cause.message) } finally { setSaving(false) }
+  }
+
+  return <div className="login-page"><div className="login-card"><Brand admin /><p className="eyebrow">Protected workspace</p><h1>Sign in to IT</h1><p>Use your TicketDesk team account to manage support requests.</p>{error && <div role="alert" className="alert"><span>{error}</span></div>}<form onSubmit={login}><label>Username<input autoComplete="username" required value={credentials.username} onChange={(e) => setCredentials((value) => ({ ...value, username: e.target.value }))} /></label><label>Password<input type="password" autoComplete="current-password" required value={credentials.password} onChange={(e) => setCredentials((value) => ({ ...value, password: e.target.value }))} /></label><button className="primary-button" disabled={saving}>{saving ? 'Signing in…' : 'Sign in'}</button></form><a href="/">← Return to employee portal</a></div></div>
+}
+
 function AdminDashboard() {
+  const [user, setUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const [tickets, setTickets] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [priorityFilter, setPriorityFilter] = useState('all')
+  const [showAccounts, setShowAccounts] = useState(false)
+  const [accounts, setAccounts] = useState([])
+  const [accountForm, setAccountForm] = useState({ username: '', display_name: '', password: '', role: 'agent' })
 
   useEffect(() => {
+    fetch('/api/auth/me').then(async (response) => response.ok ? (await response.json()).user : null).then(setUser).finally(() => setAuthLoading(false))
+  }, [])
+
+  useEffect(() => {
+    if (!user) return undefined
     const controller = new AbortController()
     // oxlint-disable-next-line react/set-state-in-effect
     apiRequest('/api/tickets', { signal: controller.signal }).then((data) => setTickets(data.tickets)).catch((cause) => { if (cause.name !== 'AbortError') setError(cause.message) }).finally(() => setLoading(false))
     return () => controller.abort()
-  }, [])
+  }, [user])
 
   const counts = useMemo(() => ({
     all: tickets.length,
@@ -148,18 +184,53 @@ function AdminDashboard() {
     } catch (cause) { setError(cause.message) }
   }
 
+  async function openAccounts() {
+    setError(''); setShowAccounts(true)
+    try { setAccounts((await apiRequest('/api/auth/accounts')).accounts) } catch (cause) { setError(cause.message) }
+  }
+
+  async function createAccount(event) {
+    event.preventDefault(); setError('')
+    try {
+      const data = await apiRequest('/api/auth/accounts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(accountForm) })
+      setAccounts((current) => [...current, data.account].sort((a, b) => a.username.localeCompare(b.username)))
+      setAccountForm({ username: '', display_name: '', password: '', role: 'agent' })
+    } catch (cause) { setError(cause.message) }
+  }
+
+  async function updateAccount(account, changes) {
+    setError('')
+    try {
+      const data = await apiRequest(`/api/auth/accounts/${account.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(changes) })
+      setAccounts((current) => current.map((item) => item.id === account.id ? data.account : item))
+    } catch (cause) { setError(cause.message) }
+  }
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    setUser(null); setTickets([])
+  }
+
+  if (authLoading) return <div className="login-page"><div className="login-card">Checking your session…</div></div>
+  if (!user) return <AdminLogin onLogin={setUser} />
+  const canUpdate = user.permissions.includes('tickets:update')
+  const canManageAccounts = user.permissions.includes('accounts:manage')
+
   return (
-    <div className="app-shell"><aside className="sidebar"><Brand admin /><nav aria-label="Admin navigation"><a className="nav-item active" href="#workspace">Overview</a><a className="nav-item" href="#tickets">Ticket queue</a><a className="nav-item" href="/">User portal</a></nav><div className="sidebar-note"><span className="online-dot" /> System operational</div></aside>
+    <div className="app-shell"><aside className="sidebar"><Brand admin /><nav aria-label="Admin navigation"><a className="nav-item active" href="#workspace" onClick={() => setShowAccounts(false)}>Overview</a><a className="nav-item" href="#tickets" onClick={() => setShowAccounts(false)}>Ticket queue</a>{canManageAccounts && <button className="nav-item nav-button" onClick={openAccounts}>Team accounts</button>}<a className="nav-item" href="/">User portal</a></nav><div className="sidebar-note"><span className="online-dot" /> Signed in as {user.username}</div></aside>
       <main className="workspace" id="workspace">
-        <header className="topbar"><div><p className="eyebrow">IT administration</p><h1>Support workspace</h1><p className="subtitle">Review, assign, and resolve employee requests.</p></div><a className="secondary-button button-link" href="/">Open user portal</a></header>
+        <header className="topbar"><div><p className="eyebrow">IT administration · {user.role}</p><h1>{showAccounts ? 'Team accounts' : 'Support workspace'}</h1><p className="subtitle">{showAccounts ? 'Create accounts and control access levels.' : 'Review, assign, and resolve employee requests.'}</p></div><div className="account-actions"><span>{user.display_name}</span><button className="secondary-button" onClick={logout}>Sign out</button></div></header>
+        {showAccounts && <section className="accounts-panel"><div className="section-heading"><div><p className="eyebrow">Access control</p><h2>IT team members</h2></div><p>Admin manages users · Agent updates tickets · Viewer reads only</p></div><form className="account-form" onSubmit={createAccount}><label>Username<input required minLength={3} maxLength={64} value={accountForm.username} onChange={(e) => setAccountForm((value) => ({ ...value, username: e.target.value }))} placeholder="first.last" /></label><label>Display name<input required minLength={2} maxLength={120} value={accountForm.display_name} onChange={(e) => setAccountForm((value) => ({ ...value, display_name: e.target.value }))} /></label><label>Temporary password<input required type="password" minLength={12} value={accountForm.password} onChange={(e) => setAccountForm((value) => ({ ...value, password: e.target.value }))} /></label><label>Role<select value={accountForm.role} onChange={(e) => setAccountForm((value) => ({ ...value, role: e.target.value }))}><option value="agent">Agent</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select></label><button className="primary-button">Add account</button></form><div className="account-list">{accounts.map((account) => <article key={account.id}><div><strong>{account.display_name}</strong><span>@{account.username}</span></div><select aria-label={`Role for ${account.username}`} value={account.role} disabled={Number(account.id) === Number(user.id)} onChange={(e) => updateAccount(account, { role: e.target.value })}><option value="admin">Admin</option><option value="agent">Agent</option><option value="viewer">Viewer</option></select><button className="secondary-button" disabled={Number(account.id) === Number(user.id)} onClick={() => updateAccount(account, { active: !account.active })}>{account.active ? 'Disable' : 'Enable'}</button></article>)}</div></section>}
+        {!showAccounts && <>
         <section className="stats" aria-label="Ticket summary"><article><span>Total tickets</span><strong>{counts.all}</strong><small>All requests</small></article><article><span>Open</span><strong>{counts.open}</strong><small>Waiting for action</small></article><article><span>In progress</span><strong>{counts.in_progress}</strong><small>Being handled</small></article><article className={counts.urgent ? 'urgent-stat' : ''}><span>Urgent</span><strong>{counts.urgent}</strong><small>Immediate attention</small></article></section>
         {error && <div role="alert" className="alert"><strong>Could not complete the request.</strong><span>{error}</span></div>}
         <section className="ticket-panel" id="tickets" aria-labelledby="tickets-title">
           <div className="section-heading"><div><p className="eyebrow">Queue</p><h2 id="tickets-title">Support tickets</h2></div><p>{visibleTickets.length} of {tickets.length} tickets</p></div>
           <div className="filters"><label className="search-field"><span>Search</span><input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, email, phone, subject…" /></label><label><span>Status</span><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="all">All statuses</option>{statuses.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label><span>Priority</span><select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)}><option value="all">All priorities</option>{priorities.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div>
           {loading && <div className="empty-state">Loading the ticket queue…</div>}{!loading && visibleTickets.length === 0 && <div className="empty-state"><strong>No tickets found</strong><span>Try changing the filters.</span></div>}
-          <div className="ticket-list">{visibleTickets.map((ticket) => <article className="ticket-card" key={ticket.id}><div className={`priority-line priority-${ticket.priority}`} /><div className="ticket-main"><div className="ticket-heading"><div className="ticket-tags"><span className={`priority-badge priority-${ticket.priority}`}>{ticket.priority}</span><span className="category-badge">{ticket.category}</span></div><span className="ticket-id">#{ticket.id}</span></div><h3>{ticket.title}</h3><p className="ticket-description">{ticket.description || 'No additional description provided.'}</p>{ticket.has_attachment && <a className="attachment-link" href={`/api/tickets/${ticket.id}/attachment`} target="_blank" rel="noreferrer"><img src={`/api/tickets/${ticket.id}/attachment`} alt={`Attachment for ticket ${ticket.id}`} />View attached image</a>}<div className="requester-card"><strong>{ticket.requester_name}</strong><a href={ticket.requester_email ? `mailto:${ticket.requester_email}` : undefined}>{ticket.requester_email || 'Legacy ticket — no email'}</a><a href={ticket.requester_phone ? `tel:${ticket.requester_phone}` : undefined}>{ticket.requester_phone || 'No phone number'}</a></div><div className="ticket-meta"><span>Created {formatDate(ticket.created_at)}</span></div></div><div className="ticket-controls"><label>Status<select value={ticket.status} onChange={(e) => updateTicket(ticket.id, 'status', { status: e.target.value })}>{statuses.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Assignee<input key={`${ticket.id}-${ticket.assigned_to}`} defaultValue={ticket.assigned_to} placeholder="Unassigned" maxLength={120} onBlur={(e) => { if (e.target.value.trim() !== ticket.assigned_to) updateTicket(ticket.id, 'assignment', { assigned_to: e.target.value }) }} /></label></div></article>)}</div>
+          <div className="ticket-list">{visibleTickets.map((ticket) => <article className="ticket-card" key={ticket.id}><div className={`priority-line priority-${ticket.priority}`} /><div className="ticket-main"><div className="ticket-heading"><div className="ticket-tags"><span className={`priority-badge priority-${ticket.priority}`}>{ticket.priority}</span><span className="category-badge">{ticket.category}</span></div><span className="ticket-id">#{ticket.id}</span></div><h3>{ticket.title}</h3><p className="ticket-description">{ticket.description || 'No additional description provided.'}</p>{ticket.has_attachment && <a className="attachment-link" href={`/api/tickets/${ticket.id}/attachment`} target="_blank" rel="noreferrer"><img src={`/api/tickets/${ticket.id}/attachment`} alt={`Attachment for ticket ${ticket.id}`} />View attached image</a>}<div className="requester-card"><strong>{ticket.requester_name}</strong><a href={ticket.requester_email ? `mailto:${ticket.requester_email}` : undefined}>{ticket.requester_email || 'Legacy ticket — no email'}</a><a href={ticket.requester_phone ? `tel:${ticket.requester_phone}` : undefined}>{ticket.requester_phone || 'No phone number'}</a></div><div className="ticket-meta"><span>Created {formatDate(ticket.created_at)}</span></div></div><div className="ticket-controls"><label>Status<select disabled={!canUpdate} value={ticket.status} onChange={(e) => updateTicket(ticket.id, 'status', { status: e.target.value })}>{statuses.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Assignee<input disabled={!canUpdate} key={`${ticket.id}-${ticket.assigned_to}`} defaultValue={ticket.assigned_to} placeholder="Unassigned" maxLength={120} onBlur={(e) => { if (e.target.value.trim() !== ticket.assigned_to) updateTicket(ticket.id, 'assignment', { assigned_to: e.target.value }) }} /></label></div></article>)}</div>
         </section>
+        </>}
       </main>
     </div>
   )

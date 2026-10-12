@@ -33,6 +33,7 @@ fi
 for required_file in \
   /etc/company-ticket/secrets/postgres_password \
   /etc/company-ticket/secrets/postgres_app_password \
+  /etc/company-ticket/secrets/ticketdesk_admin_password \
   "$host_env" \
   "$image_env"
 do
