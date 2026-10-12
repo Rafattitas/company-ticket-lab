@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const express = require("express");
 const createTicketsRouter = require("../routes/tickets");
+const { tokenHash } = require("../routes/conversations");
 
 async function withApi(pool, run) {
   const app = express();
@@ -51,7 +52,8 @@ test("creates a ticket with trimmed values and parameterized SQL", async () => {
   let queryValues;
   const pool = {
     async query(sql, values) {
-      assert.match(sql, /VALUES \(\$1, \$2, \$3, \$4, \$5, \$6, \$7\)/);
+      assert.match(sql, /VALUES \(\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$12\)/);
+      assert.match(sql, /INSERT INTO ticket_events/);
       queryValues = values;
       return {
         rows: [{ id: "7", title: "VPN issue", description: "Needs access", status: "open" }],
@@ -75,8 +77,13 @@ test("creates a ticket with trimmed values and parameterized SQL", async () => {
     });
 
     assert.equal(response.status, 201);
-    assert.equal((await response.json()).ticket.title, "VPN issue");
-    assert.deepEqual(queryValues, [
+    const created = await response.json();
+    assert.equal(created.ticket.title, "VPN issue");
+    assert.match(created.tracking_token, /^[a-f0-9]{64}$/);
+    assert.equal(queryValues[11], tokenHash(created.tracking_token));
+    assert.notEqual(queryValues[11], created.tracking_token);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.deepEqual(queryValues.slice(0, 11), [
       "VPN issue",
       "Needs access",
       "Salma",
@@ -203,6 +210,6 @@ test("updates ticket assignment with a parameterized query", async () => {
     });
 
     assert.equal(response.status, 200);
-    assert.deepEqual(capturedValues, ["Rafat", 9]);
+    assert.deepEqual(capturedValues, ["Rafat", 9, "IT support", null]);
   });
 });

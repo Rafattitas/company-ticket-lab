@@ -3,6 +3,7 @@ const pool = require("./db");
 const runMigrations = require("./migrate");
 const { createAuthentication, ensureBootstrapAdmin } = require("./auth");
 const ticketsRouter = require("./routes/tickets");
+const { createTrackingRouter, createConversationRouter } = require("./routes/conversations");
 const app = express();
 const port = Number(process.env.PORT || 3000);
 
@@ -63,6 +64,8 @@ app.get("/api", (request, response) => {
 });
 const authentication = createAuthentication(pool);
 app.use("/api/auth", authentication.router);
+app.use("/api/tracking", createTrackingRouter(pool));
+app.use("/api/tickets", createConversationRouter(pool, authentication));
 app.use("/api/tickets", ticketsRouter(pool, authentication));
 
 app.use((error, request, response, next) => {

@@ -22,6 +22,7 @@ behavior, read `docs/accounts-and-permissions.md`.
 | `frontend/nginx.conf` | Static files and `/api/` reverse proxy |
 | `backend/server.js` | Startup, migration/bootstrap sequence, health checks, error handling, shutdown |
 | `backend/routes/tickets.js` | Ticket validation, parameterized queries, attachments, permission checks |
+| `backend/routes/conversations.js` | Private tracking access, public replies, internal notes, activity reads |
 | `backend/auth.js` | Password hashing, sessions, authorization, account routes, bootstrap admin |
 | `backend/db.js` | PostgreSQL connection and password-file support |
 | `backend/migrate.js`, `migrations/` | Ordered migrations and `schema_migrations` ledger |
@@ -35,7 +36,9 @@ behavior, read `docs/accounts-and-permissions.md`.
 ## Invariants to preserve
 
 - Public ticket creation must remain usable without an IT login. Ticket lists,
-  individual tickets, and attachments require IT authorization.
+  individual tickets, and attachments require IT authorization. The separate
+  `/api/tracking/:id` endpoints authorize only the ticket matching a private
+  token sent in `X-Ticket-Token`. Never make the general ticket API public.
 - Admin can manage accounts and update tickets; Agent can read/update tickets;
   Viewer can only read tickets. Hiding UI controls is not authorization.
 - On an empty accounts table the initial login defaults to `admin` / `admin`.
@@ -47,6 +50,13 @@ behavior, read `docs/accounts-and-permissions.md`.
   cookies, session invalidation, and safeguards for the last active admin.
 - Use parameterized SQL. Validate inputs and image types/size on the backend.
   Attachments currently live in PostgreSQL, so backups include them.
+- Tracking links keep the raw token in the URL fragment, never query strings
+  or paths; store only its SHA-256 hash. Return it only at ticket creation.
+  Public timeline reads must exclude internal notes, assignment events, contact
+  details, and staff identity. A shared tracking link grants bearer access;
+  do not describe it as proof of employee identity.
+- Record status/assignment changes atomically with their before/after values
+  and server-authenticated actor. Do not log a change when the value is unchanged.
 - Add a new numbered SQL migration for schema changes. Do not rewrite migrations
   already applied to a persistent database. Check backward compatibility:
   rolling back an image does not roll back the database schema.

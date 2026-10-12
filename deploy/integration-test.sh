@@ -243,6 +243,67 @@ async function request(path, options) {
     throw new Error("Ticket attachment was not returned correctly");
   }
 
+  const jsonHeaders = { "content-type": "application/json" };
+  await request(`/api/tickets/${created.ticket.id}/assignment`, {
+    method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ assigned_to: "CI agent" }),
+  });
+  await request(`/api/tickets/${created.ticket.id}/status`, {
+    method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ status: "in_progress" }),
+  });
+  await request(`/api/tickets/${created.ticket.id}/comments`, {
+    method: "POST", headers: jsonHeaders, body: JSON.stringify({ body: "Please restart the device.", internal: false }),
+  });
+  await request(`/api/tickets/${created.ticket.id}/comments`, {
+    method: "POST", headers: jsonHeaders, body: JSON.stringify({ body: "Private investigation note", internal: true }),
+  });
+  const staffThread = await request(`/api/tickets/${created.ticket.id}/conversation`);
+  if (staffThread.comments.length !== 2 || !staffThread.comments.some((item) => item.internal)) {
+    throw new Error("Staff conversation lost the internal note");
+  }
+  const statusEvents = staffThread.events.filter((item) => item.kind === "status_changed");
+  if (statusEvents.length !== 1 || statusEvents[0].old_value !== "open" || statusEvents[0].new_value !== "in_progress" || statusEvents[0].actor_name !== "CI support agent") {
+    throw new Error("Status audit did not preserve actor/before/after or recorded a no-op");
+  }
+  if (!staffThread.events.some((item) => item.kind === "assignment_changed" && item.new_value === "CI agent")) {
+    throw new Error("Assignment audit is missing");
+  }
+
+  // Tracking never uses the staff cookie or puts its token in a URL.
+  const trackingPath = `/api/tracking/${created.ticket.id}`;
+  const trackingHeaders = { "X-Ticket-Token": created.tracking_token };
+  const publicResponse = await fetch(`${baseUrl}${trackingPath}`, { headers: trackingHeaders });
+  const publicThread = await publicResponse.json();
+  if (!publicResponse.ok || publicThread.comments.length !== 1 || publicThread.comments[0].author_name !== "IT support") {
+    throw new Error("Employee cannot read the public IT reply");
+  }
+  if (JSON.stringify(publicThread).includes("Private investigation note") || JSON.stringify(publicThread).includes("CI support agent") || publicThread.events.some((item) => item.kind === "assignment_changed") || publicThread.ticket.requester_email) {
+    throw new Error("Public tracking leaked private staff or contact data");
+  }
+  const employeeReply = await fetch(`${baseUrl}${trackingPath}/comments`, {
+    method: "POST", headers: { ...jsonHeaders, ...trackingHeaders }, body: JSON.stringify({ body: "Restarted; it works now.", author_kind: "staff" }),
+  });
+  if (employeeReply.status !== 201 || (await employeeReply.json()).comment.author_kind !== "employee") {
+    throw new Error("Employee reply was not recorded with the correct identity");
+  }
+  const privateAttempt = await fetch(`${baseUrl}${trackingPath}/comments`, {
+    method: "POST", headers: { ...jsonHeaders, ...trackingHeaders }, body: JSON.stringify({ body: "forged note", internal: true }),
+  });
+  if (privateAttempt.status !== 400) throw new Error("Employee created an internal note");
+  const invalidLink = await fetch(`${baseUrl}${trackingPath}`, { headers: { "X-Ticket-Token": "0".repeat(64) } });
+  if (invalidLink.status !== 404) throw new Error("Invalid tracking token was accepted");
+  const other = await request("/api/tickets", {
+    method: "POST", headers: jsonHeaders,
+    body: JSON.stringify({ title: "Second CI ticket", requester_name: "Other employee", requester_email: "other@example.com", requester_phone: "123456789" }),
+  });
+  const crossTicket = await fetch(`${baseUrl}/api/tracking/${other.ticket.id}`, { headers: trackingHeaders });
+  if (crossTicket.status !== 404) throw new Error("Tracking token authorized a different ticket");
+  const trackedImage = await fetch(`${baseUrl}${trackingPath}/attachment`, { headers: trackingHeaders });
+  if (!trackedImage.ok || trackedImage.headers.get("content-type") !== "image/png") throw new Error("Tracked attachment was not returned");
+  const listedAgain = await request("/api/tickets");
+  if (JSON.stringify(listedAgain).includes(created.tracking_token) || JSON.stringify(listedAgain).includes("tracking_token_hash")) {
+    throw new Error("IT ticket list leaked tracking secrets");
+  }
+
   console.log("Integration test passed");
 })().catch((error) => {
   console.error(error.message);

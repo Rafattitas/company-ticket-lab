@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import { EmployeeTracking, TicketConversation } from './Conversation'
 
 const statuses = [['open', 'Open'], ['in_progress', 'In progress'], ['resolved', 'Resolved'], ['closed', 'Closed']]
 const priorities = [['low', 'Low'], ['normal', 'Normal'], ['high', 'High'], ['urgent', 'Urgent']]
@@ -61,6 +62,7 @@ function UserPortal() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [createdTicket, setCreatedTicket] = useState(null)
+  const [trackingToken, setTrackingToken] = useState('')
   const [attachment, setAttachment] = useState(null)
   const emptyForm = { requester_name: '', requester_email: '', requester_phone: '', title: '', description: '', category: 'General', priority: 'normal' }
   const [form, setForm] = useState(emptyForm)
@@ -78,10 +80,11 @@ function UserPortal() {
         body: JSON.stringify({ ...form, attachment: encodedAttachment }),
       })
       setCreatedTicket(data.ticket)
+      setTrackingToken(data.tracking_token)
     } catch (cause) { setError(cause.message) } finally { setSaving(false) }
   }
 
-  function startAnotherTicket() { setCreatedTicket(null); setAttachment(null); setForm(emptyForm) }
+  function startAnotherTicket() { setCreatedTicket(null); setTrackingToken(''); setAttachment(null); setForm(emptyForm) }
 
   return (
     <div className="portal-page">
@@ -98,6 +101,7 @@ function UserPortal() {
               <span className="success-icon">✓</span><p className="eyebrow">Request received</p>
               <h2>Ticket #{createdTicket.id} is in the queue</h2><p>We sent your request to IT. Keep this ticket number for reference.</p>
               <div className="receipt"><strong>{createdTicket.title}</strong><span>{createdTicket.priority} priority · {createdTicket.category}</span></div>
+              <div className="tracking-receipt"><p>Save your private follow-up link before leaving this page. Anyone with this link can view this ticket and reply.</p><label>Private tracking link<input readOnly value={`${window.location.origin}/track/${createdTicket.id}#${trackingToken}`} onFocus={(event) => event.target.select()} /></label><a className="primary-button" href={`/track/${createdTicket.id}#${trackingToken}`}>Follow your ticket →</a><small>Select the link above to copy it. It is shown only when the ticket is created.</small></div>
               <button className="primary-button" type="button" onClick={startAnotherTicket}>Submit another request</button>
             </div>
           ) : (
@@ -255,7 +259,7 @@ function AdminDashboard() {
           <div className="section-heading"><div><p className="eyebrow">Queue</p><h2 id="tickets-title">Support tickets</h2></div><p>{visibleTickets.length} of {tickets.length} tickets</p></div>
           <div className="filters"><label className="search-field"><span>Search</span><input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, email, phone, subject…" /></label><label><span>Status</span><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="all">All statuses</option>{statuses.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label><span>Priority</span><select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)}><option value="all">All priorities</option>{priorities.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div>
           {loading && <div className="empty-state">Loading the ticket queue…</div>}{!loading && visibleTickets.length === 0 && <div className="empty-state"><strong>No tickets found</strong><span>Try changing the filters.</span></div>}
-          <div className="ticket-list">{visibleTickets.map((ticket) => <article className="ticket-card" key={ticket.id}><div className={`priority-line priority-${ticket.priority}`} /><div className="ticket-main"><div className="ticket-heading"><div className="ticket-tags"><span className={`priority-badge priority-${ticket.priority}`}>{ticket.priority}</span><span className="category-badge">{ticket.category}</span></div><span className="ticket-id">#{ticket.id}</span></div><h3>{ticket.title}</h3><p className="ticket-description">{ticket.description || 'No additional description provided.'}</p>{ticket.has_attachment && <a className="attachment-link" href={`/api/tickets/${ticket.id}/attachment`} target="_blank" rel="noreferrer"><img src={`/api/tickets/${ticket.id}/attachment`} alt={`Attachment for ticket ${ticket.id}`} />View attached image</a>}<div className="requester-card"><strong>{ticket.requester_name}</strong><a href={ticket.requester_email ? `mailto:${ticket.requester_email}` : undefined}>{ticket.requester_email || 'Legacy ticket — no email'}</a><a href={ticket.requester_phone ? `tel:${ticket.requester_phone}` : undefined}>{ticket.requester_phone || 'No phone number'}</a></div><div className="ticket-meta"><span>Created {formatDate(ticket.created_at)}</span></div></div><div className="ticket-controls"><label>Status<select disabled={!canUpdate} value={ticket.status} onChange={(e) => updateTicket(ticket.id, 'status', { status: e.target.value })}>{statuses.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Assignee<input disabled={!canUpdate} key={`${ticket.id}-${ticket.assigned_to}`} defaultValue={ticket.assigned_to} placeholder="Unassigned" maxLength={120} onBlur={(e) => { if (e.target.value.trim() !== ticket.assigned_to) updateTicket(ticket.id, 'assignment', { assigned_to: e.target.value }) }} /></label></div></article>)}</div>
+          <div className="ticket-list">{visibleTickets.map((ticket) => <article className="ticket-card" key={ticket.id}><div className={`priority-line priority-${ticket.priority}`} /><div className="ticket-main"><div className="ticket-heading"><div className="ticket-tags"><span className={`priority-badge priority-${ticket.priority}`}>{ticket.priority}</span><span className="category-badge">{ticket.category}</span></div><span className="ticket-id">#{ticket.id}</span></div><h3>{ticket.title}</h3><p className="ticket-description">{ticket.description || 'No additional description provided.'}</p>{ticket.has_attachment && <a className="attachment-link" href={`/api/tickets/${ticket.id}/attachment`} target="_blank" rel="noreferrer"><img src={`/api/tickets/${ticket.id}/attachment`} alt={`Attachment for ticket ${ticket.id}`} />View attached image</a>}<div className="requester-card"><strong>{ticket.requester_name}</strong><a href={ticket.requester_email ? `mailto:${ticket.requester_email}` : undefined}>{ticket.requester_email || 'Legacy ticket — no email'}</a><a href={ticket.requester_phone ? `tel:${ticket.requester_phone}` : undefined}>{ticket.requester_phone || 'No phone number'}</a></div><div className="ticket-meta"><span>Created {formatDate(ticket.created_at)}</span></div></div><div className="ticket-controls"><label>Status<select disabled={!canUpdate} value={ticket.status} onChange={(e) => updateTicket(ticket.id, 'status', { status: e.target.value })}>{statuses.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Assignee<input disabled={!canUpdate} key={`${ticket.id}-${ticket.assigned_to}`} defaultValue={ticket.assigned_to} placeholder="Unassigned" maxLength={120} onBlur={(e) => { if (e.target.value.trim() !== ticket.assigned_to) updateTicket(ticket.id, 'assignment', { assigned_to: e.target.value }) }} /></label></div><TicketConversation ticketId={ticket.id} canUpdate={canUpdate} updatedAt={ticket.updated_at} /></article>)}</div>
         </section>
         </>}
       </main>
@@ -263,5 +267,5 @@ function AdminDashboard() {
   )
 }
 
-function App() { return window.location.pathname.startsWith('/admin') ? <AdminDashboard /> : <UserPortal /> }
+function App() { return window.location.pathname.startsWith('/admin') ? <AdminDashboard /> : window.location.pathname.startsWith('/track/') ? <EmployeeTracking /> : <UserPortal /> }
 export default App

@@ -1,4 +1,6 @@
 const express = require("express");
+const crypto = require("node:crypto");
+const { tokenHash } = require("./conversations");
 
 const allowedStatuses = new Set(["open", "in_progress", "resolved", "closed"]);
 const allowedPriorities = new Set(["low", "normal", "high", "urgent"]);
@@ -233,12 +235,13 @@ function createTicketsRouter(pool, authentication = { requirePermission: () => (
     }
 
     try {
+      const trackingToken = crypto.randomBytes(32).toString("hex");
       const result = await pool.query(
         `WITH new_ticket AS (
            INSERT INTO tickets
              (title, description, requester_name, category, priority,
-              requester_email, requester_phone)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+              requester_email, requester_phone, tracking_token_hash)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $12)
            RETURNING ${ticketColumns}
          ), new_attachment AS (
            INSERT INTO ticket_attachments
@@ -247,6 +250,10 @@ function createTicketsRouter(pool, authentication = { requirePermission: () => (
            FROM new_ticket
            WHERE $11::bytea IS NOT NULL
            RETURNING ticket_id
+         ), new_event AS (
+           INSERT INTO ticket_events (ticket_id, kind, actor_name, new_value)
+           SELECT id, 'created', 'Employee', 'open' FROM new_ticket
+           RETURNING id
          )
          SELECT new_ticket.*,
            EXISTS (SELECT 1 FROM new_attachment) AS has_attachment
@@ -263,10 +270,12 @@ function createTicketsRouter(pool, authentication = { requirePermission: () => (
           attachment?.contentType || null,
           attachment?.data.length || null,
           attachment?.data || null,
+          tokenHash(trackingToken),
         ],
       );
 
-      return response.status(201).json({ ticket: result.rows[0] });
+      response.set("Cache-Control", "no-store");
+      return response.status(201).json({ ticket: result.rows[0], tracking_token: trackingToken });
     } catch (error) {
       return next(error);
     }
@@ -286,11 +295,18 @@ function createTicketsRouter(pool, authentication = { requirePermission: () => (
 
     try {
       const result = await pool.query(
-        `UPDATE tickets
-         SET status = $1, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2
-         RETURNING ${ticketColumns}`,
-        [status, id],
+        `WITH previous AS MATERIALIZED (
+           SELECT id, status FROM tickets WHERE id = $2 FOR UPDATE
+         ), updated AS (
+           UPDATE tickets SET status = $1, updated_at = CURRENT_TIMESTAMP
+           WHERE id = (SELECT id FROM previous) RETURNING ${ticketColumns}
+         ), event AS (
+           INSERT INTO ticket_events (ticket_id, kind, actor_name, actor_id, old_value, new_value)
+           SELECT previous.id, 'status_changed', $3, $4, previous.status, $1
+           FROM previous JOIN updated ON updated.id = previous.id
+           WHERE previous.status IS DISTINCT FROM $1 RETURNING id
+         ) SELECT * FROM updated`,
+        [status, id, request.user?.display_name || "IT support", request.user?.id || null],
       );
 
       if (result.rowCount === 0) {
@@ -317,11 +333,18 @@ function createTicketsRouter(pool, authentication = { requirePermission: () => (
 
     try {
       const result = await pool.query(
-        `UPDATE tickets
-         SET assigned_to = $1, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2
-         RETURNING ${ticketColumns}`,
-        [assignedTo, id],
+        `WITH previous AS MATERIALIZED (
+           SELECT id, assigned_to FROM tickets WHERE id = $2 FOR UPDATE
+         ), updated AS (
+           UPDATE tickets SET assigned_to = $1, updated_at = CURRENT_TIMESTAMP
+           WHERE id = (SELECT id FROM previous) RETURNING ${ticketColumns}
+         ), event AS (
+           INSERT INTO ticket_events (ticket_id, kind, actor_name, actor_id, old_value, new_value)
+           SELECT previous.id, 'assignment_changed', $3, $4, previous.assigned_to, $1
+           FROM previous JOIN updated ON updated.id = previous.id
+           WHERE previous.assigned_to IS DISTINCT FROM $1 RETURNING id
+         ) SELECT * FROM updated`,
+        [assignedTo, id, request.user?.display_name || "IT support", request.user?.id || null],
       );
 
       if (result.rowCount === 0) {
