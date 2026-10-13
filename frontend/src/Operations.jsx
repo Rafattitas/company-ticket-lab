@@ -34,6 +34,7 @@ function PolicyForm({ policy, onSave }) {
 }
 
 export function OperationsPanel({ canManage }) {
+  const [mailStatus, setMailStatus] = useState(null)
   const [days, setDays] = useState(30)
   const [data, setData] = useState(null)
   const [departments, setDepartments] = useState([])
@@ -45,6 +46,7 @@ export function OperationsPanel({ canManage }) {
 
   useEffect(() => {
     const controller = new AbortController()
+    if (canManage) fetch('/api/notifications/status', { signal: controller.signal }).then(async (response) => { if (response.ok) setMailStatus(await response.json()) }).catch(() => {})
     Promise.all([request(`/reports?days=${days}`, { signal: controller.signal }), request('/slas', { signal: controller.signal }), canManage ? request('/departments/all', { signal: controller.signal }) : Promise.resolve({ departments: [] })])
       .then(([report, sla, teams]) => { setData(report); setPolicies(sla.policies); setDepartments(teams.departments); setError('') })
       .catch((cause) => { if (cause.name !== 'AbortError') setError(cause.message) })
@@ -78,6 +80,7 @@ export function OperationsPanel({ canManage }) {
       <h3>Departments — tickets created in period</h3><div className="report-table"><table><thead><tr><th>Department</th><th>Created</th><th>Still outstanding</th></tr></thead><tbody>{data.departments.map((row) => <tr key={row.name}><td>{row.name}</td><td>{row.tickets}</td><td>{row.outstanding}</td></tr>)}</tbody></table>{!data.departments.length && <p>No tickets in this period.</p>}</div>
       <h3>Daily requests (UTC) — latest 30 active dates</h3><div className="daily-bars">{data.daily.slice(-30).map((row) => <div key={row.day}><span>{row.day}</span><meter min="0" max={Math.max(...data.daily.map((item) => Number(item.tickets)), 1)} value={Number(row.tickets)} aria-label={`${row.day}: ${row.tickets} tickets`} /><strong>{row.tickets}</strong></div>)}</div>
     </>}
+    {canManage && mailStatus && <section className="operations-settings"><h3>Email notifications</h3><p>{mailStatus.configuration_error ? 'SMTP settings need attention. Ticket updates continue normally.' : mailStatus.enabled ? 'Email delivery is enabled. SMTP acceptance does not guarantee inbox delivery.' : 'Email delivery is off. Configure SMTP on the server to enable notifications.'}</p><div className="queue-tabs">{['pending', 'sending', 'sent', 'failed', 'expired'].map((state) => <span key={state}>{state}: {mailStatus.counts[state] || 0}</span>)}</div><p>Private notes are never emailed. Refresh this report to update delivery counts.</p></section>}
     {canManage ? <><section className="operations-settings"><h3>Departments</h3><p>Disabling a department hides it from new routing choices; existing tickets keep their department.</p><form className="department-form" onSubmit={addDepartment}><label>New department<input required minLength={2} maxLength={80} value={name} onChange={(event) => setName(event.target.value)} /></label><button className="primary-button" disabled={saving}>{saving ? 'Adding…' : 'Add department'}</button></form><div className="department-list">{departments.map((department) => <div key={department.id}><span>{department.name} · {department.active ? 'Active' : 'Disabled'}</span><button className="secondary-button" onClick={() => toggleDepartment(department)}>{department.active ? 'Disable' : 'Enable'}</button></div>)}</div></section>
       <section className="operations-settings"><h3>Priority service targets</h3><p>Targets use elapsed hours, including nights/weekends. Changes apply to future tickets only. First public IT reply stops the response timer; internal notes do not. Reopening keeps the original deadlines.</p>{policies.map((policy) => <PolicyForm key={policy.priority} policy={policy} onSave={savePolicy} />)}</section>
     </> : <section className="operations-settings"><h3>Service targets (elapsed hours)</h3>{policies.map((policy) => <p key={policy.priority}>{policy.priority}: response {policy.response_hours} h · resolution {policy.resolution_hours} h</p>)}</section>}

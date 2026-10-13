@@ -173,6 +173,8 @@ async function request(path, options) {
     }),
   });
 
+  const emailStatus = await request("/api/notifications/status");
+  if (emailStatus.enabled || emailStatus.configuration_error) throw new Error("CI SMTP should be disabled and healthy");
   await request("/api/auth/accounts", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -347,6 +349,8 @@ async function request(path, options) {
   const agentPolicyEdit = await fetch(`${baseUrl}/api/operations/slas/high`, { method: "PATCH", headers: { ...jsonHeaders, cookie }, body: JSON.stringify({ response_hours: 1, resolution_hours: 2 }) });
   if (agentPolicyEdit.status !== 403) throw new Error("Agent changed a service policy");
 
+  const emailDenied = await fetch(`${baseUrl}/api/notifications/status`, { headers: { cookie } });
+  if (emailDenied.status !== 403) throw new Error("Agent accessed administrator email status");
   console.log("Integration test passed");
 })().catch((error) => {
   console.error(error.message);
@@ -383,4 +387,39 @@ const pool = require("./db");
   if (JSON.stringify(before.rows) !== JSON.stringify(after.rows)) throw new Error("Policy edit changed an existing SLA snapshot");
   console.log("SLA overdue and all-ticket report integration passed");
 })().catch((error) => { console.error(error.message); process.exitCode = 1; }).finally(() => pool.end());
+JS
+
+# Outbox writes commit with public changes; private/employee comments stay private.
+docker exec -i "$backend_name" node <<'JS'
+const pool = require('./db');
+(async () => {
+  const ticket = (await pool.query('SELECT id FROM tickets ORDER BY id LIMIT 1')).rows[0];
+  const count = async () => Number((await pool.query('SELECT count(*) AS count FROM email_notifications WHERE ticket_id = $1', [ticket.id])).rows[0].count);
+  const before = await count();
+  await pool.query("INSERT INTO ticket_comments(ticket_id,body,author_kind,author_name,internal) VALUES ($1,'Private note','staff','IT support',TRUE)", [ticket.id]);
+  await pool.query("INSERT INTO ticket_comments(ticket_id,body,author_kind,author_name,internal) VALUES ($1,'Employee reply','employee','Employee',FALSE)", [ticket.id]);
+  if (await count() !== before) throw new Error('Private or employee comment generated email');
+  await pool.query("INSERT INTO ticket_comments(ticket_id,body,author_kind,author_name,internal) VALUES ($1,'Public reply','staff','IT support',FALSE)", [ticket.id]);
+  if (await count() !== before + 1) throw new Error('Public staff reply did not enqueue email');
+  if (!(await pool.query("SELECT 1 FROM email_notifications WHERE kind = 'status_changed'")).rowCount) throw new Error('Status updates did not enqueue email');
+  const committedCount = await count();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("INSERT INTO ticket_comments(ticket_id,body,author_kind,author_name,internal) VALUES ($1,'Rolled back reply','staff','IT support',FALSE)", [ticket.id]);
+    await client.query('ROLLBACK');
+  } finally { client.release(); }
+  if (await count() !== committedCount) throw new Error('Rolled-back reply left an email behind');
+  await pool.query("INSERT INTO email_notifications(ticket_id,source_key,recipient,kind,ticket_status,created_at) VALUES ($1,'ci-expired','expired@example.com','public_reply','open',CURRENT_TIMESTAMP - INTERVAL '25 hours')", [ticket.id]);
+  const { createEmailWorker } = require('./email');
+  const messages = [];
+  const worker = createEmailWorker(pool, { env: { SMTP_ENABLED: 'true', SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'support@example.com' }, createTransport: () => ({ async sendMail(message) { messages.push(message); return { accepted: [message.to] }; } }) });
+  await worker.tick();
+  if (messages.length !== 1 || Number((await pool.query("SELECT count(*) AS count FROM email_notifications WHERE state = 'sent'")).rows[0].count) !== 1) throw new Error('Worker failed to record delivery');
+  if (!(await pool.query("SELECT 1 FROM email_notifications WHERE source_key = 'ci-expired' AND state = 'expired'")).rowCount) throw new Error('Stale notifications did not expire');
+  const retryWorker = createEmailWorker(pool, { env: { SMTP_ENABLED: 'true', SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'support@example.com' }, logger: { error() {}, warn() {} }, createTransport: () => ({ async sendMail() { throw Object.assign(new Error('private SMTP error'), { code: 'EAUTH' }); } }) });
+  await retryWorker.tick();
+  if (!(await pool.query("SELECT 1 FROM email_notifications WHERE state = 'pending' AND attempts = 1 AND error_code = 'EAUTH' AND available_at > CURRENT_TIMESTAMP")).rowCount) throw new Error('SMTP failure lost its retry');
+  console.log('Email outbox integration passed');
+})().catch(error => { console.error(error.message); process.exitCode = 1; }).finally(() => pool.end());
 JS

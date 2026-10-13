@@ -19,7 +19,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
-COPY --chown=node:node package.json package-lock.json server.js db.js migrate.js auth.js ./
+COPY --chown=node:node package.json package-lock.json server.js db.js migrate.js auth.js email.js ./
 COPY --chown=node:node routes ./routes
 COPY --chown=node:node migrations ./migrations
 USER node

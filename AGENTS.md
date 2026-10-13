@@ -137,3 +137,12 @@ Update relevant docs when behavior changes. Explain resulting behavior, tests,
 migration implications, and limitations in the PR. Never call TicketDesk fully
 production-ready solely because CI passes: current risks and the scanning scope
 are recorded in `README.md` and `docs/security-scanning.md`.
+
+## Email notification invariants
+
+`backend/email.js` processes the database outbox from migration 008. Never email
+internal notes, descriptions, attachments, staff identity, or tracking tokens.
+Only real status/routing changes and public staff replies enqueue notifications.
+SMTP is opt-in, TLS is mandatory, and credentials stay outside Git. API health
+must not depend on SMTP availability. SMTP acceptance is not inbox delivery.
+Read `docs/email-notifications.md` for leases, retries, expiry, and host setup.
