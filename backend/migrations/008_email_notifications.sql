@@ -1,5 +1,5 @@
 BEGIN;
-CREATE TABLE email_notifications (
+CREATE TABLE IF NOT EXISTS email_notifications (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   ticket_id BIGINT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
   source_key TEXT NOT NULL UNIQUE,
@@ -13,11 +13,11 @@ CREATE TABLE email_notifications (
   sent_at TIMESTAMPTZ,
   error_code VARCHAR(40)
 );
-CREATE INDEX email_notifications_ready ON email_notifications(state, available_at);
+CREATE INDEX IF NOT EXISTS email_notifications_ready ON email_notifications(state, available_at);
 
 -- Outbox writes commit with the original change, even if the mail worker is down.
 -- No content, internal notes, staff identities, or private link tokens enter email.
-CREATE FUNCTION enqueue_ticket_notification() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION enqueue_ticket_notification() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_TABLE_NAME = 'ticket_comments' THEN
     IF NEW.internal OR NEW.author_kind <> 'staff' THEN RETURN NEW; END IF;
@@ -30,6 +30,8 @@ BEGIN
     status FROM tickets WHERE id = NEW.ticket_id AND requester_email <> '';
   RETURN NEW;
 END $$;
+DROP TRIGGER IF EXISTS ticket_event_email ON ticket_events;
 CREATE TRIGGER ticket_event_email AFTER INSERT ON ticket_events FOR EACH ROW EXECUTE FUNCTION enqueue_ticket_notification();
+DROP TRIGGER IF EXISTS ticket_reply_email ON ticket_comments;
 CREATE TRIGGER ticket_reply_email AFTER INSERT ON ticket_comments FOR EACH ROW EXECUTE FUNCTION enqueue_ticket_notification();
 COMMIT;
