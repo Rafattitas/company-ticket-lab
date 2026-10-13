@@ -5,6 +5,8 @@ const { createAuthentication, ensureBootstrapAdmin } = require("./auth");
 const ticketsRouter = require("./routes/tickets");
 const { createTrackingRouter, createConversationRouter } = require("./routes/conversations");
 const { createOperationsRouter } = require("./routes/operations");
+const { createEmailWorker } = require('./email');
+const emailWorker = createEmailWorker(pool);
 const app = express();
 const port = Number(process.env.PORT || 3000);
 
@@ -65,6 +67,10 @@ app.get("/api", (request, response) => {
 });
 const authentication = createAuthentication(pool);
 app.use("/api/auth", authentication.router);
+app.get('/api/notifications/status', authentication.requirePermission('accounts:manage'), async (request, response, next) => {
+  response.set('Cache-Control', 'no-store');
+  try { response.json(await emailWorker.status()); } catch (error) { next(error); }
+});
 app.use("/api/operations", createOperationsRouter(pool, authentication));
 app.use("/api/tracking", createTrackingRouter(pool));
 app.use("/api/tickets", createConversationRouter(pool, authentication));
@@ -82,6 +88,7 @@ let server;
 async function start() {
   await runMigrations(pool);
   await ensureBootstrapAdmin(pool);
+  emailWorker.start();
   server = app.listen(port, "0.0.0.0", () => {
     console.log(`Backend listening on port ${port}`);
   });
@@ -108,6 +115,7 @@ async function shutdown(signal) {
 
   server.close(async () => {
     try {
+      await emailWorker.stop();
       await pool.end();
       process.exit(0);
     } catch (error) {

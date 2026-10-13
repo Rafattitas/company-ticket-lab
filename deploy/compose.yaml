@@ -42,6 +42,10 @@ services:
   # The backend is reachable only through Docker networks; no host port is
   # published for the API.
   backend:
+    # Optional SMTP configuration stays outside Git and is read only at startup.
+    env_file:
+      - path: /etc/company-ticket/mail.env
+        required: false
     image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE}
     restart: unless-stopped
     depends_on:
@@ -60,6 +64,7 @@ services:
       - postgres_app_password
     networks:
       - internal
+      - mail_egress
     expose:
       - "3000"
     group_add:
@@ -125,4 +130,8 @@ networks:
   edge:
     driver: bridge
   database_management:
+    driver: bridge
+
+  # Outbound SMTP only; no backend ports are published on the host.
+  mail_egress:
     driver: bridge

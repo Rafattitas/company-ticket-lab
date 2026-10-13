@@ -298,3 +298,9 @@ and distinguishes repository deployment code from the installed VM command.
 ## License
 
 TicketDesk is available under the [MIT License](LICENSE).
+
+### Email notifications
+
+Status/routing changes and public IT replies can notify the requester by SMTP.
+Sending is disabled until a mail service is configured on the host. See
+[Email setup and delivery behavior](docs/email-notifications.md).
