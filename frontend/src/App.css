@@ -72,3 +72,33 @@ button, input, textarea, select { font: inherit; }.primary-button, .secondary-bu
 .nav-button { width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer; }.account-actions { display: flex; gap: 12px; align-items: center; color: #475467; font-size: .85rem; font-weight: 700; }.accounts-panel { padding: 24px; background: #fff; border: 1px solid #eaecf0; border-radius: 16px; }.account-form { display: grid; grid-template-columns: repeat(4, 1fr) auto; gap: 12px; align-items: end; padding: 22px 0; border-top: 1px solid #eaecf0; border-bottom: 1px solid #eaecf0; }.account-form input, .account-form select { min-width: 0; }.account-form button { margin-bottom: 1px; white-space: nowrap; }.account-list { display: grid; }.account-list article { display: grid; grid-template-columns: 1fr 150px auto; gap: 14px; align-items: center; padding: 15px 0; border-bottom: 1px solid #eaecf0; }.account-list article > div { display: grid; gap: 3px; }.account-list article span { color: #667085; font-size: .8rem; }.account-list select { width: 100%; padding: 9px; border: 1px solid #d0d5dd; border-radius: 8px; background: #fff; }
 @media (max-width: 920px) { .app-shell { grid-template-columns: 1fr; }.sidebar { position: static; height: auto; padding: 18px 22px; flex-direction: row; align-items: center; gap: 20px; }.brand { margin: 0; }.sidebar nav { display: flex; margin-left: auto; }.sidebar-note { display: none; }.stats { grid-template-columns: repeat(2, 1fr); }.workspace { width: min(100% - 32px, 760px); padding-top: 28px; }.portal-main { grid-template-columns: 1fr; padding-top: 20px; }.portal-intro { position: static; padding: 0; }.portal-intro h1 { font-size: 3rem; }.portal-promises { grid-template-columns: repeat(3, 1fr); }.account-form { grid-template-columns: repeat(2, 1fr); }.account-form button { align-self: end; } }
 @media (max-width: 640px) { .sidebar { align-items: flex-start; }.sidebar nav { display: none; }.topbar { align-items: flex-start; }.stats { grid-template-columns: 1fr 1fr; gap: 10px; }.stats article { padding: 15px; }.stats strong { font-size: 1.6rem; }.create-panel, .ticket-panel { padding: 18px; }.form-grid, .filters, .ticket-card, .account-form { grid-template-columns: 1fr; }.ticket-controls { padding: 16px 0 0; border-left: 0; border-top: 1px solid #eaecf0; }.ticket-meta { flex-direction: column; gap: 4px; }.section-heading > p { display: none; }.requester-card { grid-template-columns: 1fr; gap: 5px; }.portal-header, .portal-main { width: min(100% - 28px, 560px); }.portal-header { padding-top: 16px; }.admin-link { font-size: .76rem; }.portal-intro h1 { font-size: 2.5rem; }.portal-promises { grid-template-columns: 1fr; }.request-card, .login-card { padding: 22px 18px; border-radius: 16px; }.upload-field > span:first-child { display: block; }.upload-field small { display: block; margin-top: 4px; }.account-actions span { display: none; }.account-list article { grid-template-columns: 1fr; } }
+/* Workspace refinements: visible navigation, compact triage, and touch targets. */
+.skip-link { position: fixed; top: -100px; left: 16px; z-index: 20; background: #fff; padding: 14px; color: #53389e; border-radius: 8px; }
+.skip-link:focus { top: 12px; }
+.queue-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 20px; }
+.queue-tabs button { border: 1px solid #e4e7ec; background: #f9fafb; color: #475467; border-radius: 24px; padding: 10px 16px; cursor: pointer; font-weight: 650; }
+.queue-tabs button.selected { color: #53389e; background: #f4f3ff; border-color: #9e77ed; }
+.filters { grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(120px, 1fr)); gap: 14px; }
+.queue-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; color: #667085; font-size: .85rem; }
+.queue-toolbar > span { margin-right: auto; }
+.queue-toolbar label { display: flex; align-items: center; gap: 8px; }
+.queue-toolbar select { width: auto; margin: 0; }
+.ticket-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-top: 14px; }
+.status-badge { flex-shrink: 0; border-radius: 6px; padding: 5px 9px; background: #eff8ff; color: #175cd3; font-size: .75rem; font-weight: 700; }
+.status-in_progress { background: #fffaeb; color: #93370d; }
+.status-resolved, .status-closed { background: #ecfdf3; color: #027a48; }
+.ticket-description { max-height: 180px; overflow: auto; overflow-wrap: anywhere; }
+.pagination { display: flex; align-items: center; justify-content: center; gap: 20px; padding: 24px 0 0; color: #667085; }
+.success-notice { padding: 12px 16px; background: #ecfdf3; color: #027a48; border: 1px solid #abefc6; border-radius: 10px; }
+.field-hint { display: block; margin-top: 5px; color: #667085; font-weight: 400; line-height: 1.5; }
+.upload-field:focus-within .upload-box { outline: 3px solid #9e77ed; outline-offset: 3px; }
+button:disabled { opacity: .55; cursor: not-allowed; }
+.ticket-controls select, .secondary-button, .nav-item { min-height: 42px; }
+.report-table { border-radius: 12px; border: 1px solid #e4e7ec; }
+.report-table th { background: #f9fafb; }
+@media (max-width: 1200px) { .filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }.search-field { grid-column: span 2; } }
+@media (max-width: 920px) { .sidebar { flex-wrap: wrap; }.sidebar nav { width: 100%; margin: 0; overflow-x: auto; }.sidebar nav .nav-item { white-space: nowrap; }.workspace { width: calc(100% - 32px); }.topbar { flex-wrap: wrap; } }
+@media (max-width: 640px) { .sidebar { padding: 16px; }.sidebar nav { display: flex; gap: 6px; padding-bottom: 4px; }.nav-item { font-size: .8rem; padding: 10px; }.filters { grid-template-columns: 1fr 1fr; }.search-field { grid-column: 1 / -1; }.queue-toolbar { gap: 10px; }.queue-toolbar > span { width: 100%; }.ticket-title-row { flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }.ticket-tags { flex-wrap: wrap; }.ticket-title-row h3 { overflow-wrap: anywhere; }.stats article { min-width: 0; }.section-heading { flex-wrap: wrap; gap: 14px; }.pagination { gap: 12px; }.account-actions { width: 100%; justify-content: space-between; }.account-actions span { display: inline; } }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+.app-shell > *, .sidebar nav, .workspace, .ticket-main { min-width: 0; }
+@media (max-width: 640px) { .sidebar nav { max-width: 100%; }.sidebar .brand { margin-bottom: 4px; }.section-heading > div { min-width: 0; }.ticket-controls { min-width: 0; }.requester-card { overflow-wrap: anywhere; } }

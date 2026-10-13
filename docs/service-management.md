@@ -94,3 +94,16 @@ The legacy `assigned_to` input remains supported for backward compatibility;
 the UI uses `assignee_id`. Department choices must be active and technician IDs
 must reference active Admin/Agent accounts. The private employee tracking API
 continues to omit internal routing, assignee identity, and internal events.
+## Queue usability
+
+The IT workspace offers Needs action, Assigned to me, Unassigned, and SLA overdue
+shortcuts, search including department names, and priority/deadline/date ordering.
+Filters compose with each shortcut; Clear filters resets all filters. Tickets are
+shown ten at a time from the latest 200 loaded tickets. Reports continue to use
+all database records. A legacy named assignee is not treated as unassigned by the
+shortcut. Closed/resolved tickets never appear in overdue or active shortcuts.
+
+Navigation remains available on mobile, with visible keyboard focus and a skip
+link. Ticket changes announce success and disable controls while saving. Uploads
+are checked immediately for type/size and can be removed before submission.
+Frontend queue behavior tests run with `npm test` and in GitHub verification.
