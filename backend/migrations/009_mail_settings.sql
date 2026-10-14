@@ -1,0 +1,8 @@
+BEGIN;
+CREATE TABLE IF NOT EXISTS mail_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  settings JSONB NOT NULL,
+  encrypted_password TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMIT;

@@ -38,6 +38,8 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-ticketdesk-local-password}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+    volumes:
+      - mail_settings_key:/app/settings
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
@@ -68,4 +70,5 @@ services:
       - no-new-privileges:true
 
 volumes:
+  mail_settings_key:
   ticketdesk_data:

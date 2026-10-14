@@ -6,7 +6,9 @@ const ticketsRouter = require("./routes/tickets");
 const { createTrackingRouter, createConversationRouter } = require("./routes/conversations");
 const { createOperationsRouter } = require("./routes/operations");
 const { createEmailWorker } = require('./email');
-const emailWorker = createEmailWorker(pool);
+const { createMailSettings } = require('./mail-settings');
+const mailSettings = createMailSettings(pool);
+const emailWorker = createEmailWorker(pool, { configurationProvider: mailSettings.configuration });
 const app = express();
 const port = Number(process.env.PORT || 3000);
 
@@ -67,6 +69,7 @@ app.get("/api", (request, response) => {
 });
 const authentication = createAuthentication(pool);
 app.use("/api/auth", authentication.router);
+app.use('/api/notifications/settings', authentication.requirePermission('accounts:manage'), mailSettings.router);
 app.get('/api/notifications/status', authentication.requirePermission('accounts:manage'), async (request, response, next) => {
   response.set('Cache-Control', 'no-store');
   try { response.json(await emailWorker.status()); } catch (error) { next(error); }

@@ -28,15 +28,25 @@ function notificationMessage(row, config) {
   };
 }
 
-function createEmailWorker(pool, { env = process.env, createTransport = nodemailer.createTransport, logger = console } = {}) {
+function createEmailWorker(pool, { env = process.env, createTransport = nodemailer.createTransport, logger = console, configurationProvider } = {}) {
   let config, transport, timer, busy = false, running;
   let configurationError = false;
   try { config = mailConfiguration(env); if (config) transport = createTransport(config.options); }
   catch { configurationError = true; logger.error('Email notifications: invalid configuration; ticket operations remain available.'); }
+  async function refreshConfiguration() {
+    if (!configurationProvider) return;
+    try {
+      const next = await configurationProvider();
+      if (JSON.stringify(next) !== JSON.stringify(config)) { transport?.close(); config = next; transport = next ? createTransport(next.options) : undefined; }
+      configurationError = false;
+    } catch { transport?.close(); transport = undefined; config = undefined; configurationError = true; }
+  }
   async function tick() {
-    if (!transport || busy) return;
+    if (busy) return;
     busy = true;
     try {
+      await refreshConfiguration();
+      if (!transport) return;
       await pool.query("UPDATE email_notifications SET state = 'expired', error_code = NULL WHERE state IN ('pending', 'sending') AND created_at < CURRENT_TIMESTAMP - INTERVAL '24 hours'");
       await pool.query("UPDATE email_notifications SET state = 'failed' WHERE state = 'sending' AND attempts >= 6 AND available_at < CURRENT_TIMESTAMP");
       const result = await pool.query(`WITH candidate AS (
@@ -63,10 +73,11 @@ function createEmailWorker(pool, { env = process.env, createTransport = nodemail
     finally { busy = false; }
   }
   return {
-    start() { if (!transport || timer) return; running = tick(); timer = setInterval(() => { if (!busy) running = tick(); }, 5000); timer.unref(); },
+    start() { if ((!transport && !configurationProvider) || timer) return; running = tick(); timer = setInterval(() => { if (!busy) running = tick(); }, 5000); timer.unref(); },
     async stop() { clearInterval(timer); timer = null; await running; transport?.close(); },
     tick,
     async status() {
+      if (!busy) await refreshConfiguration();
       const result = await pool.query('SELECT state, count(*)::integer AS count FROM email_notifications GROUP BY state');
       return { enabled: Boolean(transport), configuration_error: configurationError, counts: Object.fromEntries(result.rows.map(row => [row.state, row.count])) };
     },
