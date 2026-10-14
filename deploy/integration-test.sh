@@ -130,10 +130,10 @@ docker run --detach \
 
 wait_for_backend
 
-docker run --rm \
+docker run --rm -i \
   --network "$network_name" \
   node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 \
-  node -e '
+  node <<'API_JS'
 const baseUrl = "http://backend:3000";
 let cookie = "";
 
@@ -364,7 +364,7 @@ async function request(path, options) {
   console.error(error.message);
   process.exit(1);
 });
-'
+API_JS
 
 echo "Integration test passed; cleanup runs on exit."
 

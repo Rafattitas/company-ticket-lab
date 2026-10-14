@@ -13,7 +13,39 @@ reason. It never includes descriptions, screenshots, comment text, staff
 identities, or private tracking tokens. Users open the private link saved at
 submission to see details. Email replies are not ingested by TicketDesk.
 
-## Configure SMTP
+## Configure from the dashboard (recommended)
+
+Sign in as an administrator, open **Reports & targets**, and choose
+**Email settings → Configure email**. Enter the SMTP server, TLS port, verified
+sender, username/password (or SMTP key), and optional support website origin.
+Enable notifications, save, then send a test to an inbox you control. Check the
+inbox/spam folder; SMTP acceptance alone does not confirm delivery.
+
+Changes apply to the running worker within seconds; no code edit, env file, or
+restart is needed. Dashboard settings take precedence over environment settings,
+including when notifications are disabled. A blank password keeps an existing
+dashboard password. Changing server, port, or username requires re-entering it;
+an environment password is never copied silently into the dashboard. Clear the
+username as well when removing credentials for an authenticated relay.
+
+Only administrators with a changed initial password can read/change these
+settings or send tests. Test requests are limited to one every 30 seconds.
+Use HTTPS or an authenticated local SSH tunnel when entering real credentials.
+Server-side TLS verification cannot protect a browser connection using HTTP.
+
+Migration 009 stores settings and an AES-256-GCM encrypted password. A random
+32-byte key is generated on first password save in `/app/settings/mail.key`.
+Both Compose variants mount a persistent `mail_settings_key` volume here. Keep
+this volume across upgrades and back it up separately from PostgreSQL, with
+restricted access. Database backups alone cannot restore SMTP credentials.
+Never use `docker compose down --volumes` to preserve stored credentials/data.
+If the key is lost, email fails closed; re-enter the SMTP password to recover.
+The application user needs read/write access to the settings volume. For custom
+installations, `MAIL_SETTINGS_KEY_FILE` can select another persistent key path.
+An application/host compromise can access this key; database-only backups do not
+contain it. Passwords/ciphertext are never returned by settings/status APIs.
+
+## Advanced environment configuration
 
 Sending is off by default. Supply your own SMTP service and authorized sender.
 Copy `deploy/mail.env.example` to `/etc/company-ticket/mail.env` on production;
@@ -76,34 +108,3 @@ reply, refresh the delivery counts, and check the inbox. Add an internal note
 and confirm no email is sent. Check the spam folder/provider logs for accepted
 messages that do not arrive. Until this real-inbox test succeeds, deployment
 health alone is not evidence of working email delivery.
-## Configure from the dashboard (recommended)
-
-Sign in as an administrator, open **Reports & targets**, and choose
-**Email settings → Configure email**. Enter the SMTP server, TLS port, verified
-sender, username/password (or SMTP key), and optional support website origin.
-Enable notifications, save, then send a test to an inbox you control. Check the
-inbox/spam folder; SMTP acceptance alone does not confirm delivery.
-
-Changes apply to the running worker within seconds; no code edit, env file, or
-restart is needed. Dashboard settings take precedence over environment settings,
-including when notifications are disabled. A blank password keeps an existing
-dashboard password. Changing server, port, or username requires re-entering it;
-an environment password is never copied silently into the dashboard. Clear the
-username as well when removing credentials for an authenticated relay.
-
-Only administrators with a changed initial password can read/change these
-settings or send tests. Test requests are limited to one every 30 seconds.
-Use HTTPS or an authenticated local SSH tunnel when entering real credentials.
-Server-side TLS verification cannot protect a browser connection using HTTP.
-
-Migration 009 stores settings and an AES-256-GCM encrypted password. A random
-32-byte key is generated on first password save in `/app/settings/mail.key`.
-Both Compose variants mount a persistent `mail_settings_key` volume here. Keep
-this volume across upgrades and back it up separately from PostgreSQL, with
-restricted access. Database backups alone cannot restore SMTP credentials.
-Never use `docker compose down --volumes` to preserve stored credentials/data.
-If the key is lost, email fails closed; re-enter the SMTP password to recover.
-The application user needs read/write access to the settings volume. For custom
-installations, `MAIL_SETTINGS_KEY_FILE` can select another persistent key path.
-An application/host compromise can access this key; database-only backups do not
-contain it. Passwords/ciphertext are never returned by settings/status APIs.
