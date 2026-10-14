@@ -65,6 +65,8 @@ services:
     networks:
       - internal
       - mail_egress
+    volumes:
+      - mail_settings_key:/app/settings
     expose:
       - "3000"
     group_add:
@@ -117,6 +119,7 @@ secrets:
     file: /etc/company-ticket/secrets/postgres_app_password
 
 volumes:
+  mail_settings_key:
   # Provisioned once on the host and intentionally kept outside Compose cleanup.
   postgres_data:
     external: true

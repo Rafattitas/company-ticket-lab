@@ -146,3 +146,11 @@ Only real status/routing changes and public staff replies enqueue notifications.
 SMTP is opt-in, TLS is mandatory, and credentials stay outside Git. API health
 must not depend on SMTP availability. SMTP acceptance is not inbox delivery.
 Read `docs/email-notifications.md` for leases, retries, expiry, and host setup.
+
+Dashboard SMTP settings live in `backend/mail-settings.js` and migration 009.
+Only accounts:manage can read/write/test; responses contain a password-present
+flag, never plaintext/ciphertext. Preserve AES-GCM encryption and the separate
+persistent key volume. Dashboard settings override environment settings and
+reload automatically. Do not forward a saved password to a changed SMTP
+server/port/username without re-entry. Test emails use saved settings and require
+TLS, same-origin mutation checks, and a send cooldown.

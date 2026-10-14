@@ -304,3 +304,7 @@ TicketDesk is available under the [MIT License](LICENSE).
 Status/routing changes and public IT replies can notify the requester by SMTP.
 Sending is disabled until a mail service is configured on the host. See
 [Email setup and delivery behavior](docs/email-notifications.md).
+
+Administrators can now configure SMTP and send a test from **Reports & targets →
+Email settings**, without editing code or restarting. Credentials are encrypted;
+keep the mail encryption-key volume when backing up or moving an installation.

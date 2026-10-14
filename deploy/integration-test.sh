@@ -117,6 +117,7 @@ docker run --detach \
   --cap-drop ALL \
   --security-opt no-new-privileges:true \
   --mount "type=bind,src=${secret_dir}/postgres_app_password,dst=/run/secrets/postgres_app_password,readonly" \
+  --env MAIL_SETTINGS_KEY_FILE=/tmp/mail.key \
   --env NODE_ENV=production \
   --env DB_HOST=postgres \
   --env DB_PORT=5432 \
@@ -175,6 +176,11 @@ async function request(path, options) {
 
   const emailStatus = await request("/api/notifications/status");
   if (emailStatus.enabled || emailStatus.configuration_error) throw new Error("CI SMTP should be disabled and healthy");
+  const mailForm = { enabled: false, host: 'smtp.example.com', port: 587, from: 'support@example.com', username: 'ci-mail', password: 'ci-smtp-test-password', portal_url: '' };
+  const savedMail = await request('/api/notifications/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(mailForm) });
+  if (!savedMail.password_present || JSON.stringify(savedMail).includes(mailForm.password)) throw new Error('SMTP settings leaked a password');
+  const readMail = await request('/api/notifications/settings');
+  if (readMail.source !== 'dashboard' || readMail.enabled) throw new Error('Dashboard SMTP configuration not persisted');
   await request("/api/auth/accounts", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -350,6 +356,8 @@ async function request(path, options) {
   if (agentPolicyEdit.status !== 403) throw new Error("Agent changed a service policy");
 
   const emailDenied = await fetch(`${baseUrl}/api/notifications/status`, { headers: { cookie } });
+  const settingsDenied = await fetch(`${baseUrl}/api/notifications/settings`, { headers: { cookie } });
+  if (settingsDenied.status !== 403) throw new Error('Agent accessed SMTP credentials');
   if (emailDenied.status !== 403) throw new Error("Agent accessed administrator email status");
   console.log("Integration test passed");
 })().catch((error) => {
