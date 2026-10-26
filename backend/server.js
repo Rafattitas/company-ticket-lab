@@ -68,6 +68,9 @@ app.get("/api", (request, response) => {
   });
 });
 const authentication = createAuthentication(pool);
+const content = require('./routes/content').createContentRouters(pool, authentication);
+app.use('/api/knowledge', content.knowledge);
+app.use('/api/reply-templates', content.templates);
 app.use("/api/auth", authentication.router);
 app.use('/api/notifications/settings', authentication.requirePermission('accounts:manage'), mailSettings.router);
 app.get('/api/notifications/status', authentication.requirePermission('accounts:manage'), async (request, response, next) => {

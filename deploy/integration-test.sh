@@ -181,6 +181,19 @@ async function request(path, options) {
   if (!savedMail.password_present || JSON.stringify(savedMail).includes(mailForm.password)) throw new Error('SMTP settings leaked a password');
   const readMail = await request('/api/notifications/settings');
   if (readMail.source !== 'dashboard' || readMail.enabled) throw new Error('Dashboard SMTP configuration not persisted');
+  const articleData = { title: "CI knowledge article", category: "Network", body: "Follow the approved help steps. Never share a password.", published: false };
+  const article = (await request("/api/knowledge", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(articleData) })).article;
+  if ((await fetch(`${baseUrl}/api/knowledge/${article.id}`)).status !== 404) throw new Error("Draft article was public");
+  await request(`/api/knowledge/${article.id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...articleData, published: true }) });
+  const published = await fetch(`${baseUrl}/api/knowledge/${article.id}`);
+  if (!published.ok || (await published.json()).article.body !== articleData.body) throw new Error("Published article unavailable");
+  const searchArticles = await (await fetch(`${baseUrl}/api/knowledge?search=CI%20knowledge`)).json();
+  if (searchArticles.total !== 1 || searchArticles.articles[0].id !== article.id) throw new Error("Knowledge search failed");
+  await request(`/api/knowledge/${article.id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(articleData) });
+  if ((await fetch(`${baseUrl}/api/knowledge/${article.id}`)).status !== 404) throw new Error("Unpublished article remained public");
+  const templateData = { title: "CI reusable reply", body: "Please share the error message without any credentials.", active: true };
+  const template = (await request("/api/reply-templates", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(templateData) })).template;
+  await request(`/api/reply-templates/${template.id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...templateData, active: false }) });
   await request("/api/auth/accounts", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -359,6 +372,10 @@ async function request(path, options) {
   const settingsDenied = await fetch(`${baseUrl}/api/notifications/settings`, { headers: { cookie } });
   if (settingsDenied.status !== 403) throw new Error('Agent accessed SMTP credentials');
   if (emailDenied.status !== 403) throw new Error("Agent accessed administrator email status");
+  const activeTemplates = await request("/api/reply-templates");
+  if (activeTemplates.templates.some(item => item.id === template.id) || !activeTemplates.templates.length) throw new Error("Template visibility failed");
+  const contentDenied = await fetch(`${baseUrl}/api/knowledge`, { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify(articleData) });
+  if (contentDenied.status !== 403) throw new Error("Agent managed knowledge content");
   console.log("Integration test passed");
 })().catch((error) => {
   console.error(error.message);
