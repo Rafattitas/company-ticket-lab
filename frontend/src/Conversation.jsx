@@ -52,6 +52,21 @@ function CommentForm({ onSubmit, staff = false }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [sent, setSent] = useState(false)
+  const [templates, setTemplates] = useState([])
+  const [templateId, setTemplateId] = useState('')
+  useEffect(() => {
+    if (!staff) return undefined
+    const controller = new AbortController()
+    request('/api/reply-templates', { signal: controller.signal }).then(data => setTemplates(data.templates)).catch(cause => { if (cause.name !== 'AbortError') setError('Reply templates could not load. You can still write a reply.') })
+    return () => controller.abort()
+  }, [staff])
+  function insertTemplate() {
+    const template = templates.find(item => String(item.id) === templateId)
+    if (!template) return
+    const draft = body ? body + '\n\n' + template.body : template.body
+    if (draft.length > 5000) { setError('The combined draft exceeds 5,000 characters. Shorten it before inserting.'); return }
+    setBody(draft); setSent(false); setError('')
+  }
 
   async function submit(event) {
     event.preventDefault()
@@ -64,6 +79,7 @@ function CommentForm({ onSubmit, staff = false }) {
 
   return <form className="comment-form" onSubmit={submit}>
     {staff && <label>Message visibility<select disabled={saving} value={internal ? 'internal' : 'public'} onChange={(event) => setInternal(event.target.value === 'internal')}><option value="public">Reply to employee</option><option value="internal">Internal note — IT only</option></select></label>}
+    {staff && <div className="template-picker"><label>Reply template<select disabled={saving} value={templateId} onChange={e => setTemplateId(e.target.value)}><option value="">Choose a saved reply</option>{templates.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label><button type="button" className="secondary-button" disabled={saving || !templateId} onClick={insertTemplate}>Insert into draft</button><small>Review before sending. Existing draft text is kept; visibility stays unchanged.</small></div>}
     <label>{internal ? 'Internal note' : 'Reply'}<textarea required maxLength={5000} rows={4} disabled={saving} value={body} onChange={(event) => { setBody(event.target.value); setSent(false) }} placeholder={internal ? 'Only IT staff can read this note.' : 'Add a question, an update, or more details.'} /></label>
     {error && <p className="alert" role="alert">{error}</p>}
     {sent && <p role="status">Message sent.</p>}

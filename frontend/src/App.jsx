@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import { KnowledgeBase, ContentManager } from './Knowledge'
 import { filterQueue } from './queue.mjs'
 import { EmployeeTracking, TicketConversation } from './Conversation'
 import { OperationsPanel, TicketSla } from './Operations'
@@ -98,12 +99,12 @@ function UserPortal() {
 
   return (
     <div className="portal-page">
-      <header className="portal-header"><Brand /><a className="admin-link" href="/admin">IT admin dashboard →</a></header>
+      <header className="portal-header"><Brand /><a className="admin-link" href="/knowledge">Help center</a><a className="admin-link" href="/admin">IT admin dashboard →</a></header>
       <main className="portal-main">
         <section className="portal-intro">
           <p className="eyebrow">IT support</p><h1>How can we help?</h1>
           <p>Tell us what went wrong. Your request will go directly to the IT support queue.</p>
-          <div className="portal-promises"><span>✓ Clear ticket reference</span><span>✓ Image attachments</span><span>✓ Priority-based handling</span></div>
+          <p><a className="secondary-button button-link" href="/knowledge">Search solutions before opening a ticket →</a></p><div className="portal-promises"><span>✓ Clear ticket reference</span><span>✓ Image attachments</span><span>✓ Priority-based handling</span></div>
         </section>
         <section className="request-card">
           {createdTicket ? (
@@ -188,6 +189,7 @@ function AdminDashboard() {
   const [priorityFilter, setPriorityFilter] = useState('all')
   const [showAccounts, setShowAccounts] = useState(false)
   const [showReports, setShowReports] = useState(false)
+  const [showContent, setShowContent] = useState(false)
   const [departments, setDepartments] = useState([])
   const [staff, setStaff] = useState([])
   const [departmentFilter, setDepartmentFilter] = useState('all')
@@ -242,7 +244,7 @@ function AdminDashboard() {
   }
 
   async function openAccounts() {
-    setError(''); setShowAccounts(true); setShowReports(false)
+    setError(''); setShowAccounts(true); setShowReports(false); setShowContent(false)
     try { setAccounts((await apiRequest('/api/auth/accounts')).accounts) } catch (cause) { setError(cause.message) }
   }
 
@@ -275,12 +277,12 @@ function AdminDashboard() {
   const canManageAccounts = user.permissions.includes('accounts:manage')
 
   return (
-    <div className="app-shell"><a className="skip-link" href="#workspace">Skip to workspace</a><aside className="sidebar"><Brand admin /><nav aria-label="Admin navigation"><a className={`nav-item ${!showAccounts && !showReports ? 'active' : ''}`} href="#workspace" onClick={() => { setShowAccounts(false); setShowReports(false) }}>Ticket workspace</a>{canManageAccounts && <button className={`nav-item nav-button ${showAccounts ? 'active' : ''}`} onClick={openAccounts}>Team accounts</button>}<button className={`nav-item nav-button ${showReports ? 'active' : ''}`} onClick={() => { setShowReports(true); setShowAccounts(false) }}>Reports &amp; targets</button><a className="nav-item" href="/">User portal</a></nav><div className="sidebar-note"><span className="online-dot" /> Signed in as {user.username}</div></aside>
+    <div className="app-shell"><a className="skip-link" href="#workspace">Skip to workspace</a><aside className="sidebar"><Brand admin /><nav aria-label="Admin navigation"><a className={`nav-item ${!showAccounts && !showReports && !showContent ? 'active' : ''}`} href="#workspace" onClick={() => { setShowAccounts(false); setShowReports(false); setShowContent(false) }}>Ticket workspace</a>{canManageAccounts && <button className={`nav-item nav-button ${showAccounts ? 'active' : ''}`} onClick={openAccounts}>Team accounts</button>}<button className={`nav-item nav-button ${showReports ? 'active' : ''}`} onClick={() => { setShowReports(true); setShowAccounts(false); setShowContent(false) }}>Reports &amp; targets</button>{canManageAccounts && <button className={`nav-item nav-button ${showContent ? 'active' : ''}`} onClick={() => { setShowContent(true); setShowAccounts(false); setShowReports(false) }}>Knowledge & replies</button>}<a className="nav-item" href="/">User portal</a></nav><div className="sidebar-note"><span className="online-dot" /> Signed in as {user.username}</div></aside>
       <main className="workspace" id="workspace">
-        <header className="topbar"><div><p className="eyebrow">IT administration · {user.role}</p><h1>{showAccounts ? 'Team accounts' : showReports ? 'Reports & targets' : 'Support workspace'}</h1><p className="subtitle">{showAccounts ? 'Create accounts and control access levels.' : showReports ? 'Monitor workload and configure service targets.' : 'Review, assign, and resolve employee requests.'}</p></div><div className="account-actions"><span>{user.display_name}</span><button className="secondary-button" onClick={logout}>Sign out</button></div></header>
+        <header className="topbar"><div><p className="eyebrow">IT administration · {user.role}</p><h1>{showContent ? 'Knowledge & replies' : showAccounts ? 'Team accounts' : showReports ? 'Reports & targets' : 'Support workspace'}</h1><p className="subtitle">{showContent ? 'Publish helpful articles and reusable support replies.' : showAccounts ? 'Create accounts and control access levels.' : showReports ? 'Monitor workload and configure service targets.' : 'Review, assign, and resolve employee requests.'}</p></div><div className="account-actions"><span>{user.display_name}</span><button className="secondary-button" onClick={logout}>Sign out</button></div></header>
         {error && (showAccounts || showReports) && <div role="alert" className="alert">{error}</div>}
         {showAccounts && <section className="accounts-panel"><div className="section-heading"><div><p className="eyebrow">Access control</p><h2>IT team members</h2></div><p>Admin manages users · Agent updates tickets · Viewer reads only</p></div><form className="account-form" onSubmit={createAccount}><label>Username<input required minLength={3} maxLength={64} value={accountForm.username} onChange={(e) => setAccountForm((value) => ({ ...value, username: e.target.value }))} placeholder="first.last" /></label><label>Display name<input required minLength={2} maxLength={120} value={accountForm.display_name} onChange={(e) => setAccountForm((value) => ({ ...value, display_name: e.target.value }))} /></label><label>Temporary password<input required type="password" minLength={12} value={accountForm.password} onChange={(e) => setAccountForm((value) => ({ ...value, password: e.target.value }))} /></label><label>Role<select value={accountForm.role} onChange={(e) => setAccountForm((value) => ({ ...value, role: e.target.value }))}><option value="agent">Agent</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select></label><button className="primary-button">Add account</button></form><div className="account-list">{accounts.map((account) => <article key={account.id}><div><strong>{account.display_name}</strong><span>@{account.username}</span></div><select aria-label={`Role for ${account.username}`} value={account.role} disabled={Number(account.id) === Number(user.id)} onChange={(e) => updateAccount(account, { role: e.target.value })}><option value="admin">Admin</option><option value="agent">Agent</option><option value="viewer">Viewer</option></select><button className="secondary-button" disabled={Number(account.id) === Number(user.id)} onClick={() => updateAccount(account, { active: !account.active })}>{account.active ? 'Disable' : 'Enable'}</button></article>)}</div></section>}
-        {showReports && <OperationsPanel canManage={canManageAccounts} />}{!showAccounts && !showReports && <>
+        {showContent && canManageAccounts && <ContentManager />}{showReports && <OperationsPanel canManage={canManageAccounts} />}{!showAccounts && !showReports && !showContent && <>
         <section className="stats" aria-label="Ticket summary"><article><span>Loaded tickets</span><strong>{counts.all}</strong><small>Latest queue page · up to 200</small></article><article><span>Open</span><strong>{counts.open}</strong><small>Waiting for action</small></article><article><span>In progress</span><strong>{counts.in_progress}</strong><small>Being handled</small></article><article className={counts.urgent ? 'urgent-stat' : ''}><span>Urgent</span><strong>{counts.urgent}</strong><small>Immediate attention</small></article></section>
         {error && <div role="alert" className="alert"><strong>Could not complete the request.</strong><span>{error}</span></div>}
         {notice && <p role="status" className="success-notice">{notice}</p>}
@@ -299,5 +301,5 @@ function AdminDashboard() {
   )
 }
 
-function App() { return window.location.pathname.startsWith('/admin') ? <AdminDashboard /> : window.location.pathname.startsWith('/track/') ? <EmployeeTracking /> : <UserPortal /> }
+function App() { return window.location.pathname.startsWith('/knowledge') ? <KnowledgeBase /> : window.location.pathname.startsWith('/admin') ? <AdminDashboard /> : window.location.pathname.startsWith('/track/') ? <EmployeeTracking /> : <UserPortal /> }
 export default App

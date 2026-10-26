@@ -154,3 +154,15 @@ persistent key volume. Dashboard settings override environment settings and
 reload automatically. Do not forward a saved password to a changed SMTP
 server/port/username without re-entry. Test emails use saved settings and require
 TLS, same-origin mutation checks, and a send cooldown.
+
+## Knowledge content
+
+Migration 010 and `backend/routes/content.js` implement public published-only
+knowledge reads and admin-only content writes. Never expose drafts through list,
+search, or ID lookup. Use plain text in React, not dangerous HTML rendering.
+`frontend/src/Knowledge.jsx` contains the employee help center and admin editor.
+Reply templates require tickets:update to read, accounts:manage to edit. Inserting
+a template appends to a draft and never sends or changes visibility automatically.
+Preserve the 5,000-character reply limit. See docs/knowledge-and-replies.md.
+Capacity limits and an unexecuted staging-only k6 scenario are documented in
+docs/capacity-and-load-testing.md; do not claim a 5,000-user benchmark from CI.

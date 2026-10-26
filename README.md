@@ -308,3 +308,13 @@ Sending is disabled until a mail service is configured on the host. See
 Administrators can now configure SMTP and send a test from **Reports & targets →
 Email settings**, without editing code or restarting. Credentials are encrypted;
 keep the mail encryption-key volume when backing up or moving an installation.
+
+## Self-service and reusable replies
+
+Employees can search published help articles at `/knowledge`. Administrators
+manage drafts, publication, and ready-to-use reply templates in **Knowledge &
+replies**. Technicians insert templates into a draft and review before sending.
+See [Knowledge and replies](docs/knowledge-and-replies.md).
+
+Capacity is workload-dependent and has not been certified for 5,000 concurrent
+users. See [Current limits and staging load tests](docs/capacity-and-load-testing.md).
